@@ -2,6 +2,9 @@ package com.example.bluetoothchatapplication02
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
@@ -17,12 +20,18 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.runtime.*
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.bluetoothchatapplication02.bluetooth.BluetoothAdvertiser
 import com.example.bluetoothchatapplication02.bluetooth.BluetoothLeService
@@ -41,6 +50,7 @@ import com.example.bluetoothchatapplication02.viewmodel.BluetoothViewModel
 @SuppressLint("MissingPermission")
 class MainActivity : ComponentActivity() {
 
+    private var activeScreen = Screen.Home.route
     private lateinit var bluetoothSupport: BluetoothSupport
     private lateinit var bluetoothScanner: BluetoothScanner
     private lateinit var bluetoothAdvertiser: BluetoothAdvertiser
@@ -66,10 +76,6 @@ class MainActivity : ComponentActivity() {
     private val gattUpdateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
-                BluetoothLeService.ACTION_GATT_CONNECTED -> {
-                }
-                BluetoothLeService.ACTION_GATT_DISCONNECTED -> {
-                }
                 BluetoothLeService.ACTION_NAME_AVAILABLE -> {
                     val address = intent.getStringExtra(BluetoothLeService.EXTRA_ADDRESS) ?: return
                     val name = intent.getStringExtra(BluetoothLeService.EXTRA_NAME) ?: return
@@ -77,9 +83,15 @@ class MainActivity : ComponentActivity() {
                     viewModel.updateDeviceAlias(address, name)
                     viewModel.setConnectedDeviceName(name)
                 }
+
                 BluetoothLeService.ACTION_DATA_AVAILABLE -> {
                     val message = intent.getStringExtra(BluetoothLeService.EXTRA_DATA) ?: return
                     viewModel.receiveChatMessage(message)
+
+                    if (activeScreen != Screen.Chats.route) {
+                        val senderName = viewModel.connectedDeviceName.value
+                        showNewMessageNotification(senderName, message)
+                    }
                 }
             }
         }
@@ -104,6 +116,7 @@ class MainActivity : ComponentActivity() {
         bluetoothAdvertiser = BluetoothAdvertiser()
 
         requestBluetoothPermissions()
+        createNotificationChannel()
 
         val gattServiceIntent = Intent(this, BluetoothLeService::class.java)
         bindService(gattServiceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
@@ -123,6 +136,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 var currentRoute by remember { mutableStateOf(Screen.Home.route) }
+                activeScreen = currentRoute
                 var savedUsername by remember {
                     mutableStateOf(
                         getSharedPreferences("HopLinkPrefs", MODE_PRIVATE).getString("USER_ALIAS", "") ?: ""
@@ -300,5 +314,40 @@ class MainActivity : ComponentActivity() {
             addAction(BluetoothLeService.ACTION_DATA_AVAILABLE)
             addAction(BluetoothLeService.ACTION_NAME_AVAILABLE)
         }
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                "HOPLINK_MESSAGES",
+                "Chat Messages",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notifications for incoming HopLink messages"
+            }
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun showNewMessageNotification(senderName: String, message: String) {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, intent, PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, "HOPLINK_MESSAGES")
+            .setSmallIcon(android.R.drawable.stat_notify_chat) // Default Android chat icon
+            .setContentTitle(senderName)
+            .setContentText(message)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(System.currentTimeMillis().toInt(), notification)
     }
 }
