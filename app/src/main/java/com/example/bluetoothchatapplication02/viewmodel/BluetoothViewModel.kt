@@ -2,6 +2,7 @@ package com.example.bluetoothchatapplication02.viewmodel
 
 import androidx.lifecycle.ViewModel
 import com.example.bluetoothchatapplication02.model.BluetoothDevice
+import com.example.bluetoothchatapplication02.model.ChatMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,6 +18,16 @@ class BluetoothViewModel : ViewModel() {
     val connectionStatus: StateFlow<String> = _connectionStatus.asStateFlow()
     val activeRelays: StateFlow<Int> = _activeRelays.asStateFlow()
     val queuedMessages: StateFlow<Int> = _queuedMessages.asStateFlow()
+
+    private val _chatMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
+    val chatMessages: StateFlow<List<ChatMessage>> = _chatMessages.asStateFlow()
+
+    private val _connectedDeviceName = MutableStateFlow("Connected Device")
+    val connectedDeviceName: StateFlow<String> = _connectedDeviceName.asStateFlow()
+
+    fun setConnectedDeviceName(name: String) {
+        _connectedDeviceName.value = name
+    }
 
     fun addDiscoveredDevice(device: BluetoothDevice) {
         val currentDiscovered = _discoverableDevices.value
@@ -42,7 +53,21 @@ class BluetoothViewModel : ViewModel() {
     }
 
     fun receiveChatMessage(message: String) {
+        val newMessage = ChatMessage(
+            text = message,
+            isFromMe = false,
+            senderName = _connectedDeviceName.value
+        )
+        _chatMessages.update { current -> current + newMessage }
+    }
 
+    fun addLocalMessage(text: String, myName: String) {
+        val newMessage = ChatMessage(
+            text = text,
+            isFromMe = true,
+            senderName = myName
+        )
+        _chatMessages.update { current -> current + newMessage }
     }
 
     fun updateConnectionStatus(status: String) {

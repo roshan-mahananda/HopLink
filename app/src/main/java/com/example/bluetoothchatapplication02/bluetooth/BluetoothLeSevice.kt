@@ -78,15 +78,17 @@ class BluetoothLeService : Service() {
         bluetoothGatt?.writeCharacteristic(characteristic)
     }
 
-    private fun writeMessageToCharacteristic(gatt: BluetoothGatt?, message: String) {
-        val services = gatt?.services ?: return
+    fun sendMessage(message: String) {
+        val gatt = bluetoothGatt ?: return
+        val services = gatt.services ?: return
+
         for (service in services) {
             for (characteristic in service.characteristics) {
                 val isWritable = (characteristic.properties and BluetoothGattCharacteristic.PROPERTY_WRITE) != 0 ||
                         (characteristic.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0
                 if (isWritable) {
                     writeCharacteristic(characteristic, message.toByteArray(Charsets.UTF_8))
-                    return
+                    return // Stop after writing to the first available writable characteristic
                 }
             }
         }
@@ -124,7 +126,9 @@ class BluetoothLeService : Service() {
                 val myProfileName = prefs.getString("USER_ALIAS", "Anonymous") ?: "Anonymous"
 
                 val handshakeMessage = "[SYS_NAME]:$myProfileName"
-                writeMessageToCharacteristic(gatt, handshakeMessage)
+
+                // Use the new sendMessage function
+                sendMessage(handshakeMessage)
             }
         }
 

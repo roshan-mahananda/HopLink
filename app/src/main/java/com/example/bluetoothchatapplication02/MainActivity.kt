@@ -75,6 +75,7 @@ class MainActivity : ComponentActivity() {
                     val name = intent.getStringExtra(BluetoothLeService.EXTRA_NAME) ?: return
 
                     viewModel.updateDeviceAlias(address, name)
+                    viewModel.setConnectedDeviceName(name)
                 }
                 BluetoothLeService.ACTION_DATA_AVAILABLE -> {
                     val message = intent.getStringExtra(BluetoothLeService.EXTRA_DATA) ?: return
@@ -113,6 +114,9 @@ class MainActivity : ComponentActivity() {
                 val discoveredDevices by viewModel.discoveredDevices.collectAsState()
                 val activeRelays by viewModel.activeRelays.collectAsState()
                 val queuedMessages by viewModel.queuedMessages.collectAsState()
+
+                val chatMessages by viewModel.chatMessages.collectAsState()
+                val connectedPeerName by viewModel.connectedDeviceName.collectAsState()
 
                 var isHopLinkOn by remember {
                     mutableStateOf(bluetoothSupport.getBluetoothAdapter()?.isEnabled == true)
@@ -198,6 +202,8 @@ class MainActivity : ComponentActivity() {
                                 DiscoverScreen(
                                     devices = discoveredDevices,
                                     onDeviceClick = { device ->
+                                        viewModel.setConnectedDeviceName(device.userAlias ?: device.deviceName)
+
                                         bluetoothService?.connect(device.deviceAddress)
                                         currentRoute = Screen.Chats.route
                                     }
@@ -206,8 +212,15 @@ class MainActivity : ComponentActivity() {
 
                             Screen.Chats.route -> {
                                 ChatScreen(
-                                    onSendMessage = { message ->
-                                        viewModel.updateQueuedMessages(queuedMessages + 1)
+                                    peerName = connectedPeerName,
+                                    messages = chatMessages,
+                                    onSendMessage = { messageText ->
+                                        viewModel.addLocalMessage(messageText, savedUsername)
+
+                                        bluetoothService?.sendMessage(messageText)
+                                    },
+                                    onBackClick = {
+                                        currentRoute = Screen.Home.route
                                     }
                                 )
                             }
