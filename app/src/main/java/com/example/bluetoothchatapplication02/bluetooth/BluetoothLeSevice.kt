@@ -6,6 +6,7 @@ import android.bluetooth.*
 import android.content.Context
 import android.content.Intent
 import android.os.Binder
+import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import java.util.UUID
@@ -19,7 +20,6 @@ class BluetoothLeService : Service() {
     private var bluetoothManager: BluetoothManager? = null
 
     private var bluetoothGatt: BluetoothGatt? = null
-
     private var gattServer: BluetoothGattServer? = null
     private var connectedClient: BluetoothDevice? = null
 
@@ -38,6 +38,11 @@ class BluetoothLeService : Service() {
 
         gattServer = bluetoothManager?.openGattServer(this, gattServerCallback)
 
+        if (gattServer == null) {
+            Log.e(TAG, "CRITICAL: openGattServer returned null. Check permissions!")
+            return false
+        }
+
         val service = BluetoothGattService(HopLinkConfig.SERVICE_UUID_JAVA, BluetoothGattService.SERVICE_TYPE_PRIMARY)
         val characteristic = BluetoothGattCharacteristic(
             HopLinkConfig.CHARACTERISTIC_UUID,
@@ -53,10 +58,12 @@ class BluetoothLeService : Service() {
         service.addCharacteristic(characteristic)
         gattServer?.addService(service)
 
+        Log.d(TAG, "GATT Server initialized successfully")
         return true
     }
 
     fun connect(address: String): Boolean {
+        Log.d(TAG, "Attempting connection to $address")
         bluetoothAdapter?.let { adapter ->
             try {
                 val device = adapter.getRemoteDevice(address)
@@ -71,40 +78,71 @@ class BluetoothLeService : Service() {
 
     fun sendMessage(message: String) {
         val payload = message.toByteArray(Charsets.UTF_8)
+        Log.d(TAG, "Attempting to send: $message")
 
         if (bluetoothGatt != null) {
             val char = bluetoothGatt?.getService(HopLinkConfig.SERVICE_UUID_JAVA)
                 ?.getCharacteristic(HopLinkConfig.CHARACTERISTIC_UUID)
-            char?.let {
-                it.value = payload
-                it.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                bluetoothGatt?.writeCharacteristic(it)
+            if (char != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    bluetoothGatt?.writeCharacteristic(char, payload, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                } else {
+                    char.value = payload
+                    char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                    bluetoothGatt?.writeCharacteristic(char)
+                }
+                Log.d(TAG, "Message dispatched via GATT Client")
+            } else {
+                Log.e(TAG, "Client characteristic not found!")
             }
         }
         else if (connectedClient != null && gattServer != null) {
             val char = gattServer?.getService(HopLinkConfig.SERVICE_UUID_JAVA)
                 ?.getCharacteristic(HopLinkConfig.CHARACTERISTIC_UUID)
-            char?.let {
-                it.value = payload
-                gattServer?.notifyCharacteristicChanged(connectedClient, it, false)
+            if (char != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    gattServer?.notifyCharacteristicChanged(connectedClient!!, char, false, payload)
+                } else {
+                    char.value = payload
+                    gattServer?.notifyCharacteristicChanged(connectedClient, char, false)
+                }
+                Log.d(TAG, "Message dispatched via GATT Server Notify")
+            } else {
+                Log.e(TAG, "Server characteristic not found!")
             }
+        } else {
+            Log.e(TAG, "Cannot send: Not connected to any device!")
         }
     }
 
+    private fun processIncomingData(value: ByteArray, address: String) {
+        val receivedText = String(value, Charsets.UTF_8)
+        Log.d(TAG, "Received raw data: $receivedText")
+
+        if (receivedText.startsWith("[SYS_NAME]:")) {
+            val peerName = receivedText.removePrefix("[SYS_NAME]:")
+            sendBroadcast(Intent(ACTION_NAME_AVAILABLE).apply {
+                setPackage(packageName)
+                putExtra(EXTRA_ADDRESS, address)
+                putExtra(EXTRA_NAME, peerName)
+            })
+        } else {
+            sendBroadcast(Intent(ACTION_DATA_AVAILABLE).apply {
+                setPackage(packageName)
+                putExtra(EXTRA_DATA, receivedText)
+            })
+        }
+    }
     private val gattServerCallback = object : BluetoothGattServerCallback() {
         override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
+                Log.d(TAG, "Server: Client connected (${device.address})")
                 connectedClient = device
                 broadcastUpdate(ACTION_GATT_CONNECTED)
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                Log.d(TAG, "Server: Client disconnected")
                 connectedClient = null
                 broadcastUpdate(ACTION_GATT_DISCONNECTED)
-            }
-        }
-
-        override fun onDescriptorWriteRequest(device: BluetoothDevice, requestId: Int, descriptor: BluetoothGattDescriptor, preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray) {
-            if (responseNeeded) {
-                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
             }
         }
 
@@ -112,81 +150,73 @@ class BluetoothLeService : Service() {
             if (responseNeeded) {
                 gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
             }
+            Log.d(TAG, "Server received write request")
+            processIncomingData(value, device.address)
 
-            val receivedText = String(value, Charsets.UTF_8)
-
-            if (receivedText.startsWith("[SYS_NAME]:")) {
-                val peerName = receivedText.removePrefix("[SYS_NAME]:")
-                sendBroadcast(Intent(ACTION_NAME_AVAILABLE).apply {
-                    putExtra(EXTRA_ADDRESS, device.address)
-                    putExtra(EXTRA_NAME, peerName)
-                })
-
+            val text = String(value, Charsets.UTF_8)
+            if (text.startsWith("[SYS_NAME]:")) {
                 val prefs = getSharedPreferences("HopLinkPrefs", Context.MODE_PRIVATE)
                 val myName = prefs.getString("USER_ALIAS", "Anonymous") ?: "Anonymous"
                 sendMessage("[SYS_NAME]:$myName")
-
-            } else {
-                sendBroadcast(Intent(ACTION_DATA_AVAILABLE).apply { putExtra(EXTRA_DATA, receivedText) })
             }
+        }
+
+        override fun onDescriptorWriteRequest(device: BluetoothDevice, requestId: Int, descriptor: BluetoothGattDescriptor, preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray) {
+            if (responseNeeded) gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
+            Log.d(TAG, "Server granted Notification descriptor")
         }
     }
 
     private val bluetoothGattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
+                Log.d(TAG, "Client: Connected to server. Discovering services...")
                 broadcastUpdate(ACTION_GATT_CONNECTED)
                 gatt.discoverServices()
-            } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                broadcastUpdate(ACTION_GATT_DISCONNECTED)
             }
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
+                Log.d(TAG, "Client: Services discovered. Enabling notifications...")
                 broadcastUpdate(ACTION_GATT_SERVICES_DISCOVERED)
-
-                val char = gatt.getService(HopLinkConfig.SERVICE_UUID_JAVA)
-                    ?.getCharacteristic(HopLinkConfig.CHARACTERISTIC_UUID)
-
-                if (char != null) {
-                    gatt.setCharacteristicNotification(char, true)
-                    val descriptor = char.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"))
-                    if (descriptor != null) {
-                        descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                        gatt.writeDescriptor(descriptor)
+                val char = gatt.getService(HopLinkConfig.SERVICE_UUID_JAVA)?.getCharacteristic(HopLinkConfig.CHARACTERISTIC_UUID)
+                char?.let {
+                    gatt.setCharacteristicNotification(it, true)
+                    val descriptor = it.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"))
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        gatt.writeDescriptor(descriptor!!, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                    } else {
+                        descriptor?.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                        gatt.writeDescriptor(descriptor!!)
                     }
                 }
             }
         }
 
         override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
-            if (status == BluetoothGatt.GATT_SUCCESS) {
-                val prefs = getSharedPreferences("HopLinkPrefs", Context.MODE_PRIVATE)
-                val myName = prefs.getString("USER_ALIAS", "Anonymous") ?: "Anonymous"
-                sendMessage("[SYS_NAME]:$myName")
-            }
+            Log.d(TAG, "Client: Notifications enabled. Sending handshake.")
+            val prefs = getSharedPreferences("HopLinkPrefs", Context.MODE_PRIVATE)
+            val myName = prefs.getString("USER_ALIAS", "Anonymous") ?: "Anonymous"
+            sendMessage("[SYS_NAME]:$myName")
+        }
+
+        override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
+            Log.d(TAG, "Client received data (API 33+)")
+            processIncomingData(value, gatt.device.address)
         }
 
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
-            val data = characteristic.value
-            if (data != null && data.isNotEmpty()) {
-                val receivedText = String(data, Charsets.UTF_8)
-                if (receivedText.startsWith("[SYS_NAME]:")) {
-                    val peerName = receivedText.removePrefix("[SYS_NAME]:")
-                    sendBroadcast(Intent(ACTION_NAME_AVAILABLE).apply {
-                        putExtra(EXTRA_ADDRESS, gatt.device.address)
-                        putExtra(EXTRA_NAME, peerName)
-                    })
-                } else {
-                    sendBroadcast(Intent(ACTION_DATA_AVAILABLE).apply { putExtra(EXTRA_DATA, receivedText) })
-                }
-            }
+            Log.d(TAG, "Client received data (Legacy)")
+            processIncomingData(characteristic.value, gatt.device.address)
         }
     }
 
     private fun broadcastUpdate(action: String) {
-        sendBroadcast(Intent(action))
+        val intent = Intent(action).apply {
+            setPackage(packageName)
+        }
+        sendBroadcast(intent)
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
