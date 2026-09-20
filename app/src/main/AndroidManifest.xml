@@ -58,9 +58,6 @@
         <service
             android:name=".bluetooth.BluetoothLeService"
             android:enabled="true"
-            android:exported="false" />
-        <service
-            android:name=".bluetooth.BluetoothLeService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
     </application>
