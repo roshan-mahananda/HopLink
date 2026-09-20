@@ -1,14 +1,19 @@
 package com.example.bluetoothchatapplication02.viewmodel
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import com.example.bluetoothchatapplication02.data.ChatMessageDao
 import com.example.bluetoothchatapplication02.model.BluetoothDevice
 import com.example.bluetoothchatapplication02.model.ChatMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
-class BluetoothViewModel : ViewModel() {
+class BluetoothViewModel(private val chatMessageDao: ChatMessageDao) : ViewModel() {
     private val _discoverableDevices = MutableStateFlow<List<BluetoothDevice>>(emptyList())
     private val _connectionStatus = MutableStateFlow("Disconnected")
     private val _activeRelays = MutableStateFlow(0)
@@ -18,12 +23,31 @@ class BluetoothViewModel : ViewModel() {
     val connectionStatus: StateFlow<String> = _connectionStatus.asStateFlow()
     val activeRelays: StateFlow<Int> = _activeRelays.asStateFlow()
     val queuedMessages: StateFlow<Int> = _queuedMessages.asStateFlow()
-
     private val _chatMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val chatMessages: StateFlow<List<ChatMessage>> = _chatMessages.asStateFlow()
 
     private val _connectedDeviceName = MutableStateFlow("Connected Device")
     val connectedDeviceName: StateFlow<String> = _connectedDeviceName.asStateFlow()
+
+    private val _currentPeerAddress = MutableStateFlow<String?>(null)
+
+    init {
+        viewModelScope.launch {
+            _currentPeerAddress.collectLatest { address ->
+                if (address != null) {
+                    chatMessageDao.getMessagesForDevice(address).collectLatest { dbMessages ->
+                        _chatMessages.value = dbMessages
+                    }
+                } else {
+                    _chatMessages.value = emptyList()
+                }
+            }
+        }
+    }
+
+    fun setConnectedPeer(address: String) {
+        _currentPeerAddress.value = address
+    }
 
     fun setConnectedDeviceName(name: String) {
         _connectedDeviceName.value = name
@@ -52,22 +76,37 @@ class BluetoothViewModel : ViewModel() {
         }
     }
 
+    private fun saveMessageToDatabase(text: String, senderName: String, isFromMe: Boolean, deviceAddress: String) {
+        viewModelScope.launch {
+            val newMessage = ChatMessage(
+                text = text,
+                senderName = senderName,
+                isFromMe = isFromMe,
+                deviceAddress = deviceAddress,
+                timestamp = System.currentTimeMillis()
+            )
+            chatMessageDao.insertMessage(newMessage)
+        }
+    }
+
     fun receiveChatMessage(message: String) {
-        val newMessage = ChatMessage(
+        val currentAddress = _currentPeerAddress.value ?: return
+        saveMessageToDatabase(
             text = message,
+            senderName = _connectedDeviceName.value,
             isFromMe = false,
-            senderName = _connectedDeviceName.value
+            deviceAddress = currentAddress
         )
-        _chatMessages.update { current -> current + newMessage }
     }
 
     fun addLocalMessage(text: String, myName: String) {
-        val newMessage = ChatMessage(
+        val currentAddress = _currentPeerAddress.value ?: return
+        saveMessageToDatabase(
             text = text,
+            senderName = myName,
             isFromMe = true,
-            senderName = myName
+            deviceAddress = currentAddress
         )
-        _chatMessages.update { current -> current + newMessage }
     }
 
     fun updateConnectionStatus(status: String) {
@@ -80,5 +119,15 @@ class BluetoothViewModel : ViewModel() {
 
     fun updateQueuedMessages(count: Int) {
         _queuedMessages.value = count
+    }
+}
+
+class BluetoothViewModelFactory(private val chatMessageDao: ChatMessageDao) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(BluetoothViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return BluetoothViewModel(chatMessageDao) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class")
     }
 }
