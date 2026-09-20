@@ -119,6 +119,13 @@ class MainActivity : ComponentActivity() {
         createNotificationChannel()
 
         val gattServiceIntent = Intent(this, BluetoothLeService::class.java)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(gattServiceIntent)
+        } else {
+            startService(gattServiceIntent)
+        }
+
         bindService(gattServiceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
 
         enableEdgeToEdge()
