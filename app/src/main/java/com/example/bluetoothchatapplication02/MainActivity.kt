@@ -37,6 +37,7 @@ import com.example.bluetoothchatapplication02.bluetooth.BluetoothAdvertiser
 import com.example.bluetoothchatapplication02.bluetooth.BluetoothLeService
 import com.example.bluetoothchatapplication02.bluetooth.BluetoothScanner
 import com.example.bluetoothchatapplication02.bluetooth.BluetoothSupport
+import com.example.bluetoothchatapplication02.data.HopLinkDatabase
 import com.example.bluetoothchatapplication02.ui.components.HopLinkBottomNav
 import com.example.bluetoothchatapplication02.ui.components.Screen
 import com.example.bluetoothchatapplication02.ui.screens.ChatScreen
@@ -46,6 +47,7 @@ import com.example.bluetoothchatapplication02.ui.screens.ProfileDialog
 import com.example.bluetoothchatapplication02.ui.screens.SosScreen
 import com.example.bluetoothchatapplication02.ui.theme.BluetoothChatApplication02Theme
 import com.example.bluetoothchatapplication02.viewmodel.BluetoothViewModel
+import com.example.bluetoothchatapplication02.viewmodel.BluetoothViewModelFactory
 
 @SuppressLint("MissingPermission")
 class MainActivity : ComponentActivity() {
@@ -106,6 +108,12 @@ class MainActivity : ComponentActivity() {
         } else {
             Log.e("MainActivity", "User declined to enable Bluetooth")
         }
+    }
+
+    private val bluetoothViewModel: BluetoothViewModel by viewModels {
+        BluetoothViewModelFactory(
+            HopLinkDatabase.getDatabase(applicationContext).chatMessageDao()
+        )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
