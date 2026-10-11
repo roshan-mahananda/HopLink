@@ -14,7 +14,10 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import java.nio.ByteBuffer
 import java.util.UUID
+import kotlin.random.Random
+import kotlin.random.nextInt
 
 private const val TAG = "BluetoothLeService"
 
@@ -119,8 +122,22 @@ class BluetoothLeService : Service() {
     }
 
     fun sendMessage(message: String) {
-        val payload = message.toByteArray(Charsets.UTF_8)
-        Log.d(TAG, "Attempting to send: $message")
+        val stringBytes = message.toByteArray(Charsets.UTF_8)
+
+        val ttl: Byte = 20
+        val messageId = Random.nextInt()
+        val payloadLength = stringBytes.size.toShort()
+
+        val buffer = ByteBuffer.allocate(7+stringBytes.size)
+
+        buffer.put(ttl)
+        buffer.putInt(messageId)
+        buffer.putShort(payloadLength)
+        buffer.put(stringBytes)
+
+        val payload = buffer.array()
+
+        Log.d(TAG, "Attempting to send: $message with TTL $ttl: $message")
 
         if (bluetoothGatt != null) {
             val char = bluetoothGatt?.getService(HopLinkConfig.SERVICE_UUID_JAVA)
@@ -158,8 +175,20 @@ class BluetoothLeService : Service() {
     }
 
     private fun processIncomingData(value: ByteArray, address: String) {
-        val receivedText = String(value, Charsets.UTF_8)
-        Log.d(TAG, "Received raw data: $receivedText")
+        if(value.size < 7){
+            Log.e(TAG, "Received packet too small to contain mesh header.")
+            return
+        }
+
+        val buffer = ByteBuffer.wrap(value)
+        val ttl = buffer.get()
+        val messageId = buffer.getInt()
+        val payloadLength = buffer.getShort()
+
+        val textBytes = ByteArray(payloadLength.toInt())
+        buffer.get(textBytes)
+        val receivedText = String(textBytes, Charsets.UTF_8)
+        Log.d(TAG, "Received ID: $messageId, TTL: $ttl, DATA: $receivedText")
 
         if (receivedText.startsWith("[SYS_NAME]:")) {
             val peerName = receivedText.removePrefix("[SYS_NAME]:")
