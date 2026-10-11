@@ -14,11 +14,8 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
-import kotlinx.serialization.builtins.ByteArraySerializer
 import java.nio.ByteBuffer
-import java.nio.charset.Charset
 import java.util.UUID
-import kotlin.random.Random
 
 private const val TAG = "BluetoothLeService"
 

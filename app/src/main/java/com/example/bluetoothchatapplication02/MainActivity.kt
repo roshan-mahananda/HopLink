@@ -30,7 +30,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.bluetoothchatapplication02.bluetooth.BluetoothAdvertiser
@@ -115,6 +114,17 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val allGranted = permissions.entries.all { it.value }
+        if (allGranted) {
+            startBluetoothFeatures()
+        } else {
+            Log.e("MainActivity", "Permissions denied by user.")
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -122,18 +132,9 @@ class MainActivity : ComponentActivity() {
         bluetoothScanner = BluetoothScanner()
         bluetoothAdvertiser = BluetoothAdvertiser()
 
-        requestBluetoothPermissions()
         createNotificationChannel()
 
-        val gattServiceIntent = Intent(this, BluetoothLeService::class.java)
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(gattServiceIntent)
-        } else {
-            startService(gattServiceIntent)
-        }
-
-        bindService(gattServiceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
+        requestBluetoothPermissions()
 
         enableEdgeToEdge()
         setContent {
@@ -267,6 +268,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun startBluetoothFeatures() {
+        val gattServiceIntent = Intent(this, BluetoothLeService::class.java)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(gattServiceIntent)
+        } else {
+            startService(gattServiceIntent)
+        }
+
+        bindService(gattServiceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
+    }
+
     override fun onResume() {
         super.onResume()
         ContextCompat.registerReceiver(
@@ -317,7 +330,8 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(android.Manifest.permission.POST_NOTIFICATIONS)
         }
-        ActivityCompat.requestPermissions(this, permissions.toTypedArray(), 100)
+
+        requestPermissionLauncher.launch(permissions.toTypedArray())
     }
 
     private fun makeGattUpdateIntentFilter(): IntentFilter {
