@@ -14,10 +14,11 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import kotlinx.serialization.builtins.ByteArraySerializer
 import java.nio.ByteBuffer
+import java.nio.charset.Charset
 import java.util.UUID
 import kotlin.random.Random
-import kotlin.random.nextInt
 
 private const val TAG = "BluetoothLeService"
 
@@ -32,6 +33,9 @@ class BluetoothLeService : Service() {
     private var connectedClient: BluetoothDevice? = null
 
     private val binder = LocalBinder()
+
+    private val seenMessageIds = LinkedHashSet<Int>()
+    private val MAX_CACHE_SIZE = 2000
 
     inner class LocalBinder : Binder() {
         fun getService(): BluetoothLeService = this@BluetoothLeService
@@ -123,55 +127,20 @@ class BluetoothLeService : Service() {
 
     fun sendMessage(message: String) {
         val stringBytes = message.toByteArray(Charsets.UTF_8)
-
-        val ttl: Byte = 20
-        val messageId = Random.nextInt()
+        val ttl: Byte = 10
+        val messageId = java.util.UUID.randomUUID().hashCode() // Easy way to get a random Int
         val payloadLength = stringBytes.size.toShort()
 
-        val buffer = ByteBuffer.allocate(7+stringBytes.size)
-
+        val buffer = java.nio.ByteBuffer.allocate(7 + stringBytes.size)
         buffer.put(ttl)
         buffer.putInt(messageId)
         buffer.putShort(payloadLength)
         buffer.put(stringBytes)
 
-        val payload = buffer.array()
+        seenMessageIds.add(messageId)
 
-        Log.d(TAG, "Attempting to send: $message with TTL $ttl: $message")
-
-        if (bluetoothGatt != null) {
-            val char = bluetoothGatt?.getService(HopLinkConfig.SERVICE_UUID_JAVA)
-                ?.getCharacteristic(HopLinkConfig.CHARACTERISTIC_UUID)
-            if (char != null) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    bluetoothGatt?.writeCharacteristic(char, payload, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
-                } else {
-                    char.value = payload
-                    char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                    bluetoothGatt?.writeCharacteristic(char)
-                }
-                Log.d(TAG, "Message dispatched via GATT Client")
-            } else {
-                Log.e(TAG, "Client characteristic not found!")
-            }
-        }
-        else if (connectedClient != null && gattServer != null) {
-            val char = gattServer?.getService(HopLinkConfig.SERVICE_UUID_JAVA)
-                ?.getCharacteristic(HopLinkConfig.CHARACTERISTIC_UUID)
-            if (char != null) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    gattServer?.notifyCharacteristicChanged(connectedClient!!, char, false, payload)
-                } else {
-                    char.value = payload
-                    gattServer?.notifyCharacteristicChanged(connectedClient, char, false)
-                }
-                Log.d(TAG, "Message dispatched via GATT Server Notify")
-            } else {
-                Log.e(TAG, "Server characteristic not found!")
-            }
-        } else {
-            Log.e(TAG, "Cannot send: Not connected to any device!")
-        }
+        Log.d(TAG, "Sending new message ID $messageId with TTL $ttl: $message")
+        dispatchBytes(buffer.array())
     }
 
     private fun processIncomingData(value: ByteArray, address: String) {
@@ -185,23 +154,75 @@ class BluetoothLeService : Service() {
         val messageId = buffer.getInt()
         val payloadLength = buffer.getShort()
 
+        if(seenMessageIds.contains(messageId)){
+            Log.d(TAG, "Dropped duplicate message ID: $messageId")
+            return
+        }
+
+        seenMessageIds.add(messageId)
+        if(seenMessageIds.size > MAX_CACHE_SIZE){
+            val oldestId = seenMessageIds.first()
+            seenMessageIds.remove(oldestId)
+        }
+
         val textBytes = ByteArray(payloadLength.toInt())
         buffer.get(textBytes)
         val receivedText = String(textBytes, Charsets.UTF_8)
-        Log.d(TAG, "Received ID: $messageId, TTL: $ttl, DATA: $receivedText")
 
-        if (receivedText.startsWith("[SYS_NAME]:")) {
+        Log.d(TAG, "Processed ID: $messageId, TTL: $ttl, Data: $receivedText")
+
+        if(receivedText.startsWith("[SYS_NAME]")){
             val peerName = receivedText.removePrefix("[SYS_NAME]:")
             sendBroadcast(Intent(ACTION_NAME_AVAILABLE).apply {
                 setPackage(packageName)
                 putExtra(EXTRA_ADDRESS, address)
                 putExtra(EXTRA_NAME, peerName)
             })
-        } else {
+        }else{
             sendBroadcast(Intent(ACTION_DATA_AVAILABLE).apply {
                 setPackage(packageName)
                 putExtra(EXTRA_DATA, receivedText)
             })
+        }
+
+        if(ttl>1){
+            val newTtl = (ttl-1).toByte()
+            Log.d(TAG, "Forwarding message $messageId to peers. New TTL: $newTtl")
+
+            val forwardBuffer = java.nio.ByteBuffer.allocate(7+textBytes.size)
+            forwardBuffer.put(newTtl)
+            forwardBuffer.putInt(messageId)
+            forwardBuffer.putShort(payloadLength)
+            forwardBuffer.put(textBytes)
+
+            dispatchBytes(forwardBuffer.array())
+        }
+    }
+
+    private fun dispatchBytes(payload: ByteArray) {
+        if (bluetoothGatt != null) {
+            val char = bluetoothGatt?.getService(HopLinkConfig.SERVICE_UUID_JAVA)
+                ?.getCharacteristic(HopLinkConfig.CHARACTERISTIC_UUID)
+            if (char != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    bluetoothGatt?.writeCharacteristic(char, payload, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                } else {
+                    char.value = payload
+                    char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                    bluetoothGatt?.writeCharacteristic(char)
+                }
+            }
+        } else if (connectedClient != null && gattServer != null) {
+            val char = gattServer?.getService(HopLinkConfig.SERVICE_UUID_JAVA)
+                ?.getCharacteristic(HopLinkConfig.CHARACTERISTIC_UUID)
+            if (char != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    gattServer?.notifyCharacteristicChanged(connectedClient!!, char, false, payload)
+                } else {
+                    char.value = payload
+                    gattServer?.notifyCharacteristicChanged(connectedClient, char, false)
+                }
+            }
         }
     }
     private val gattServerCallback = object : BluetoothGattServerCallback() {
