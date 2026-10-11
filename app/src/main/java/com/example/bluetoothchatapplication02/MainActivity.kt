@@ -56,7 +56,6 @@ class MainActivity : ComponentActivity() {
     private lateinit var bluetoothSupport: BluetoothSupport
     private lateinit var bluetoothScanner: BluetoothScanner
     private lateinit var bluetoothAdvertiser: BluetoothAdvertiser
-    private val viewModel: BluetoothViewModel by viewModels()
 
     private var bluetoothService: BluetoothLeService? = null
     private val serviceConnection: ServiceConnection = object : ServiceConnection {
@@ -110,7 +109,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private val bluetoothViewModel: BluetoothViewModel by viewModels {
+    private val viewModel: BluetoothViewModel by viewModels {
         BluetoothViewModelFactory(
             HopLinkDatabase.getDatabase(applicationContext).chatMessageDao()
         )
