@@ -20,7 +20,9 @@ abstract class HopLinkDatabase : RoomDatabase() {
                     context.applicationContext,
                     HopLinkDatabase::class.java,
                     "hoplink_database"
-                ).build()
+                )
+                    .fallbackToDestructiveMigration()
+                    .build()
                 INSTANCE = instance
                 instance
             }
