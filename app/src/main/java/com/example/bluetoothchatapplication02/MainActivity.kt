@@ -63,7 +63,10 @@ class MainActivity : ComponentActivity() {
             bluetoothService?.let { bluetooth ->
                 if (!bluetooth.initialize()) {
                     Log.e("MainActivity", "Unable to initialize Bluetooth")
-                    finish()
+                    val adapter = bluetoothSupport.getBluetoothAdapter()
+                    if(adapter?.isEnabled == false){
+                        bluetoothSupport.requestEnableBluetooth(enableBluetoothLauncher)
+                    }
                 }
             }
         }

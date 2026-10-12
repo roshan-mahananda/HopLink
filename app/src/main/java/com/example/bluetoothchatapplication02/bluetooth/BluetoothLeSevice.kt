@@ -80,7 +80,10 @@ class BluetoothLeService : Service() {
     fun initialize(): Boolean {
         bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         bluetoothAdapter = bluetoothManager?.adapter
-        if (bluetoothAdapter == null) return false
+        if (bluetoothAdapter == null || bluetoothAdapter?.isEnabled == false){
+            Log.e(TAG, "Bluetooth is disabled or unavailable.")
+            return false
+        }
 
         gattServer = bluetoothManager?.openGattServer(this, gattServerCallback)
 
