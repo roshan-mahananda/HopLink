@@ -96,6 +96,16 @@ class MainActivity : ComponentActivity() {
                         showNewMessageNotification(senderName, message)
                     }
                 }
+
+                BluetoothLeService.ACTION_PEER_ANNOUNCED -> {
+                    val senderId = intent.getIntExtra(BluetoothLeService.EXTRA_SENDER_ID, -1)
+                    val peerName = intent.getStringExtra(BluetoothLeService.EXTRA_NAME) ?: "Unknown"
+
+                    if (senderId != -1) {
+                        Log.d("MainActivity", "Discovered out-of-range mesh peer: $peerName ($senderId)")
+                        viewModel.addMeshPeer(senderId, peerName)
+                    }
+                }
             }
         }
     }
@@ -149,6 +159,9 @@ class MainActivity : ComponentActivity() {
                 val chatMessages by viewModel.chatMessages.collectAsState()
                 val connectedPeerName by viewModel.connectedDeviceName.collectAsState()
 
+                val meshPeers by viewModel.meshPeers.collectAsState()
+                val targetNodeId by viewModel.targetNodeId.collectAsState()
+
                 var isHopLinkOn by remember {
                     mutableStateOf(bluetoothSupport.getBluetoothAdapter()?.isEnabled == true)
                 }
@@ -161,6 +174,12 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
+                var localNodeId by remember {
+                    mutableStateOf(
+                        getSharedPreferences("HopLinkPrefs", MODE_PRIVATE).getInt("NODE_ID", -1)
+                    )
+                }
+
                 var showProfileDialog by remember { mutableStateOf(savedUsername.isEmpty()) }
 
                 if (showProfileDialog) {
@@ -169,11 +188,16 @@ class MainActivity : ComponentActivity() {
                         isFirstLaunch = savedUsername.isEmpty(),
                         onDismiss = { showProfileDialog = false },
                         onSave = { newName ->
-                            getSharedPreferences("HopLinkPrefs", MODE_PRIVATE)
-                                .edit()
-                                .putString("USER_ALIAS", newName)
-                                .apply()
+                            val prefs = getSharedPreferences("HopLinkPrefs", MODE_PRIVATE)
+                            val editor = prefs.edit()
 
+                            editor.putString("USER_ALIAS", newName)
+
+                            if(localNodeId == -1){
+                                localNodeId = (10000..99999).random()
+                                editor.putInt("NODE_ID", localNodeId)
+                            }
+                            editor.apply()
                             savedUsername = newName
                             showProfileDialog = false
 
@@ -233,10 +257,17 @@ class MainActivity : ComponentActivity() {
                             Screen.Discover.route -> {
                                 DiscoverScreen(
                                     devices = discoveredDevices,
+                                    meshPeers = meshPeers,
                                     onDeviceClick = { device ->
                                         viewModel.setConnectedDeviceName(device.userAlias ?: device.deviceName)
+                                        viewModel.setTargetNodeId(null)
 
                                         bluetoothService?.connect(device.deviceAddress)
+                                        currentRoute = Screen.Chats.route
+                                    },
+                                    onMeshPeerClick = { peer ->
+                                        viewModel.setConnectedDeviceName(peer.name)
+                                        viewModel.setTargetNodeId(peer.nodeId)
                                         currentRoute = Screen.Chats.route
                                     }
                                 )
@@ -249,7 +280,12 @@ class MainActivity : ComponentActivity() {
                                     onSendMessage = { messageText ->
                                         viewModel.addLocalMessage(messageText, savedUsername)
 
-                                        bluetoothService?.sendMessage(messageText)
+                                        val currentTargetId = targetNodeId
+                                        if (currentTargetId != null) {
+                                            bluetoothService?.sendMeshMessage(currentTargetId, messageText)
+                                        } else {
+                                            bluetoothService?.sendMessage(messageText) // Direct 1-hop message
+                                        }
                                     },
                                     onBackClick = {
                                         currentRoute = Screen.Home.route
@@ -344,6 +380,7 @@ class MainActivity : ComponentActivity() {
             addAction(BluetoothLeService.ACTION_GATT_SERVICES_DISCOVERED)
             addAction(BluetoothLeService.ACTION_DATA_AVAILABLE)
             addAction(BluetoothLeService.ACTION_NAME_AVAILABLE)
+            addAction(BluetoothLeService.ACTION_PEER_ANNOUNCED)
         }
     }
 
