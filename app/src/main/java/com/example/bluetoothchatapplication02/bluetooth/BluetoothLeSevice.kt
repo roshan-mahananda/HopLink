@@ -34,11 +34,20 @@ class BluetoothLeService : Service() {
     private val seenMessageIds = LinkedHashSet<Int>()
     private val MAX_CACHE_SIZE = 2000
 
+    private var myNodeId: Int = -1
+
     inner class LocalBinder : Binder() {
         fun getService(): BluetoothLeService = this@BluetoothLeService
     }
 
     override fun onBind(intent: Intent): IBinder = binder
+
+    override fun onCreate() {
+        super.onCreate()
+        val prefs = getSharedPreferences("HopLinkPrefs", Context.MODE_PRIVATE)
+        myNodeId = prefs.getInt("NODE_ID", -1)
+        Log.d(TAG, "Service Created - Device Node ID: $myNodeId")
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         createServiceNotificationChannel()
@@ -46,7 +55,7 @@ class BluetoothLeService : Service() {
         val notification = NotificationCompat.Builder(this, "HOPLINK_SYSTEM_SERVICE")
             .setContentTitle("HopLink is Active")
             .setContentText("Listening for peer-to-peer messages in the background")
-            .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth) // Default Android BT icon
+            .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setOngoing(true)
             .build()
 
@@ -80,7 +89,7 @@ class BluetoothLeService : Service() {
     fun initialize(): Boolean {
         bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         bluetoothAdapter = bluetoothManager?.adapter
-        if (bluetoothAdapter == null || bluetoothAdapter?.isEnabled == false){
+        if (bluetoothAdapter == null || bluetoothAdapter?.isEnabled == false) {
             Log.e(TAG, "Bluetooth is disabled or unavailable.")
             return false
         }
@@ -125,42 +134,57 @@ class BluetoothLeService : Service() {
         return false
     }
 
-    fun sendMessage(message: String) {
+    fun sendMessage(message: String, destinationId: Int = 0) {
         val stringBytes = message.toByteArray(Charsets.UTF_8)
         val ttl: Byte = 10
-        val messageId = java.util.UUID.randomUUID().hashCode() // Easy way to get a random Int
+        val messageId = UUID.randomUUID().hashCode()
         val payloadLength = stringBytes.size.toShort()
 
-        val buffer = java.nio.ByteBuffer.allocate(7 + stringBytes.size)
+        val buffer = ByteBuffer.allocate(15 + stringBytes.size)
         buffer.put(ttl)
         buffer.putInt(messageId)
+        buffer.putInt(myNodeId)
+        buffer.putInt(destinationId)
         buffer.putShort(payloadLength)
         buffer.put(stringBytes)
 
         seenMessageIds.add(messageId)
 
-        Log.d(TAG, "Sending new message ID $messageId with TTL $ttl: $message")
+        Log.d(TAG, "Sending Msg ID $messageId | From: $myNodeId -> To: $destinationId | TTL: $ttl")
         dispatchBytes(buffer.array())
     }
 
+    fun sendMeshMessage(targetNodeId: Int, message: String) {
+        val meshPayload = "MESH:$targetNodeId:$message"
+        sendMessage(meshPayload)
+    }
+
+    fun sendPresenceAnnouncement() {
+        val prefs = getSharedPreferences("HopLinkPrefs", Context.MODE_PRIVATE)
+        val myName = prefs.getString("USER_ALIAS", "Anonymous") ?: "Anonymous"
+        sendMessage("[SYS_ANNOUNCE]:$myName", destinationId = 0)
+    }
+
     private fun processIncomingData(value: ByteArray, address: String) {
-        if(value.size < 7){
-            Log.e(TAG, "Received packet too small to contain mesh header.")
+        if (value.size < 15) {
+            Log.e(TAG, "Received packet too small to contain 15-byte mesh header.")
             return
         }
 
         val buffer = ByteBuffer.wrap(value)
         val ttl = buffer.get()
         val messageId = buffer.getInt()
+        val senderId = buffer.getInt()
+        val destinationId = buffer.getInt()
         val payloadLength = buffer.getShort()
 
-        if(seenMessageIds.contains(messageId)){
+        if (seenMessageIds.contains(messageId)) {
             Log.d(TAG, "Dropped duplicate message ID: $messageId")
             return
         }
 
         seenMessageIds.add(messageId)
-        if(seenMessageIds.size > MAX_CACHE_SIZE){
+        if (seenMessageIds.size > MAX_CACHE_SIZE) {
             val oldestId = seenMessageIds.first()
             seenMessageIds.remove(oldestId)
         }
@@ -169,29 +193,44 @@ class BluetoothLeService : Service() {
         buffer.get(textBytes)
         val receivedText = String(textBytes, Charsets.UTF_8)
 
-        Log.d(TAG, "Processed ID: $messageId, TTL: $ttl, Data: $receivedText")
+        Log.d(TAG, "Processed ID: $messageId | From: $senderId | To: $destinationId | TTL: $ttl")
 
-        if(receivedText.startsWith("[SYS_NAME]")){
-            val peerName = receivedText.removePrefix("[SYS_NAME]:")
-            sendBroadcast(Intent(ACTION_NAME_AVAILABLE).apply {
-                setPackage(packageName)
-                putExtra(EXTRA_ADDRESS, address)
-                putExtra(EXTRA_NAME, peerName)
-            })
-        }else{
-            sendBroadcast(Intent(ACTION_DATA_AVAILABLE).apply {
-                setPackage(packageName)
-                putExtra(EXTRA_DATA, receivedText)
-            })
+        val isForMe = destinationId == 0 || destinationId == myNodeId
+        if (isForMe) {
+            if (receivedText.startsWith("[SYS_ANNOUNCE]:")) {
+                val peerName = receivedText.removePrefix("[SYS_ANNOUNCE]:")
+                sendBroadcast(Intent(ACTION_PEER_ANNOUNCED).apply {
+                    setPackage(packageName)
+                    putExtra(EXTRA_SENDER_ID, senderId)
+                    putExtra(EXTRA_NAME, peerName)
+                })
+            } else if (receivedText.startsWith("[SYS_NAME]:")) {
+                val peerName = receivedText.removePrefix("[SYS_NAME]:")
+                sendBroadcast(Intent(ACTION_NAME_AVAILABLE).apply {
+                    setPackage(packageName)
+                    putExtra(EXTRA_ADDRESS, address)
+                    putExtra(EXTRA_NAME, peerName)
+                })
+            } else {
+                sendBroadcast(Intent(ACTION_DATA_AVAILABLE).apply {
+                    setPackage(packageName)
+                    putExtra(EXTRA_SENDER_ID, senderId)
+                    putExtra(EXTRA_DATA, receivedText)
+                })
+            }
+        } else {
+            Log.d(TAG, "Relaying private message intended for Node $destinationId (My Node ID: $myNodeId)")
         }
 
-        if(ttl>1){
-            val newTtl = (ttl-1).toByte()
-            Log.d(TAG, "Forwarding message $messageId to peers. New TTL: $newTtl")
+        if (ttl > 1) {
+            val newTtl = (ttl - 1).toByte()
+            Log.d(TAG, "Forwarding packet $messageId to peers. New TTL: $newTtl")
 
-            val forwardBuffer = java.nio.ByteBuffer.allocate(7+textBytes.size)
+            val forwardBuffer = ByteBuffer.allocate(15 + textBytes.size)
             forwardBuffer.put(newTtl)
             forwardBuffer.putInt(messageId)
+            forwardBuffer.putInt(senderId)
+            forwardBuffer.putInt(destinationId)
             forwardBuffer.putShort(payloadLength)
             forwardBuffer.put(textBytes)
 
@@ -225,12 +264,14 @@ class BluetoothLeService : Service() {
             }
         }
     }
+
     private val gattServerCallback = object : BluetoothGattServerCallback() {
         override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 Log.d(TAG, "Server: Client connected (${device.address})")
                 connectedClient = device
                 broadcastUpdate(ACTION_GATT_CONNECTED)
+                sendPresenceAnnouncement()
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 Log.d(TAG, "Server: Client disconnected")
                 connectedClient = null
@@ -244,13 +285,6 @@ class BluetoothLeService : Service() {
             }
             Log.d(TAG, "Server received write request")
             processIncomingData(value, device.address)
-
-            val text = String(value, Charsets.UTF_8)
-            if (text.startsWith("[SYS_NAME]:")) {
-                val prefs = getSharedPreferences("HopLinkPrefs", Context.MODE_PRIVATE)
-                val myName = prefs.getString("USER_ALIAS", "Anonymous") ?: "Anonymous"
-                sendMessage("[SYS_NAME]:$myName")
-            }
         }
 
         override fun onDescriptorWriteRequest(device: BluetoothDevice, requestId: Int, descriptor: BluetoothGattDescriptor, preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray) {
@@ -291,6 +325,7 @@ class BluetoothLeService : Service() {
             val prefs = getSharedPreferences("HopLinkPrefs", Context.MODE_PRIVATE)
             val myName = prefs.getString("USER_ALIAS", "Anonymous") ?: "Anonymous"
             sendMessage("[SYS_NAME]:$myName")
+            sendPresenceAnnouncement()
         }
 
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
@@ -299,6 +334,23 @@ class BluetoothLeService : Service() {
         }
 
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
+            val rawData = characteristic.getStringValue(0) ?: ""
+
+            if (rawData.startsWith("MESH:")) {
+                val parts = rawData.split(":", limit=3)
+                if (parts.size == 3) {
+                    val targetNodeId = parts[1].toIntOrNull()
+                    val actualMessage = parts[2]
+
+                    if (targetNodeId == myNodeId) {
+                        broadcastUpdate(ACTION_DATA_AVAILABLE, actualMessage)
+                    } else if (targetNodeId != null) {
+                        Log.d("BluetoothLeService", "Relaying mesh message to node $targetNodeId")
+                        sendMeshMessage(targetNodeId, actualMessage)
+                    }
+                }
+            }
+
             Log.d(TAG, "Client received data (Legacy)")
             processIncomingData(characteristic.value, gatt.device.address)
         }
@@ -307,6 +359,14 @@ class BluetoothLeService : Service() {
     private fun broadcastUpdate(action: String) {
         val intent = Intent(action).apply {
             setPackage(packageName)
+        }
+        sendBroadcast(intent)
+    }
+
+    private fun broadcastUpdate(action: String, data: String) {
+        val intent = Intent(action).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_DATA, data)
         }
         sendBroadcast(intent)
     }
@@ -325,8 +385,11 @@ class BluetoothLeService : Service() {
         const val ACTION_GATT_SERVICES_DISCOVERED = "com.example.bluetoothchatapplication02.ACTION_GATT_SERVICES_DISCOVERED"
         const val ACTION_DATA_AVAILABLE = "com.example.bluetoothchatapplication02.ACTION_DATA_AVAILABLE"
         const val ACTION_NAME_AVAILABLE = "com.example.bluetoothchatapplication02.ACTION_NAME_AVAILABLE"
+        const val ACTION_PEER_ANNOUNCED = "com.example.bluetoothchatapplication02.ACTION_PEER_ANNOUNCED"
+
         const val EXTRA_DATA = "com.example.bluetoothchatapplication02.EXTRA_DATA"
         const val EXTRA_ADDRESS = "com.example.bluetoothchatapplication02.EXTRA_ADDRESS"
         const val EXTRA_NAME = "com.example.bluetoothchatapplication02.EXTRA_NAME"
+        const val EXTRA_SENDER_ID = "com.example.bluetoothchatapplication02.EXTRA_SENDER_ID"
     }
 }
