@@ -6,6 +6,7 @@ import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
 import android.util.Log
+import java.nio.ByteBuffer
 
 class BluetoothAdvertiser {
     private var advertiseCallback: AdvertiseCallback? = null
@@ -13,7 +14,7 @@ class BluetoothAdvertiser {
         private set
 
     @SuppressLint("MissingPermission")
-    fun startAdvertising(bluetoothAdapter: BluetoothAdapter?, username: String) {
+    fun startAdvertising(bluetoothAdapter: BluetoothAdapter?, username: String, nodeId: Int) {
         val advertiser = bluetoothAdapter?.bluetoothLeAdvertiser
         if (advertiser == null || isAdvertising) return
 
@@ -23,12 +24,17 @@ class BluetoothAdvertiser {
             .setConnectable(true)
             .build()
 
-        val safeName = username.take(12)
+        val safeName = username.take(10)
         val nameBytes = safeName.toByteArray(Charsets.UTF_8)
+
+        val serviceData = ByteBuffer.allocate(4 + nameBytes.size)
+            .putInt(nodeId)
+            .put(nameBytes)
+            .array()
 
         val data = AdvertiseData.Builder()
             .addServiceUuid(HopLinkConfig.SERVICE_UUID)
-            .addServiceData(HopLinkConfig.SERVICE_UUID, nameBytes) // Embed the name
+            .addServiceData(HopLinkConfig.SERVICE_UUID, serviceData) // Embed Node ID + Name
             .setIncludeDeviceName(false)
             .build()
 
@@ -39,7 +45,7 @@ class BluetoothAdvertiser {
         advertiseCallback = object : AdvertiseCallback() {
             override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
                 isAdvertising = true
-                Log.d("BluetoothAdvertiser", "Advertising started successfully")
+                Log.d("BluetoothAdvertiser", "Advertising started successfully with Node ID: $nodeId")
             }
 
             override fun onStartFailure(errorCode: Int) {

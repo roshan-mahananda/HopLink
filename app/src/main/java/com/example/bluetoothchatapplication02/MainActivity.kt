@@ -142,7 +142,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         bluetoothSupport = BluetoothSupport(this)
-        bluetoothScanner = BluetoothScanner()
+
+        // Initialize scanner with the new callback to capture nodeId
+        bluetoothScanner = BluetoothScanner { address, name, nodeId ->
+            viewModel.addMeshPeer(nodeId, name)
+        }
+
         bluetoothAdvertiser = BluetoothAdvertiser()
 
         createNotificationChannel()
@@ -204,7 +209,7 @@ class MainActivity : ComponentActivity() {
                             val adapter = bluetoothSupport.getBluetoothAdapter()
                             if (isHopLinkOn && adapter != null) {
                                 bluetoothAdvertiser.stopAdvertising(adapter)
-                                bluetoothAdvertiser.startAdvertising(adapter, savedUsername)
+                                bluetoothAdvertiser.startAdvertising(adapter, savedUsername, localNodeId)
                             }
                         }
                     )
@@ -243,7 +248,7 @@ class MainActivity : ComponentActivity() {
                                                 startDiscovery()
                                             }
                                         } else {
-                                            bluetoothScanner.stopScan(adapter)
+                                            bluetoothScanner.stopScanning(adapter)
                                             bluetoothAdvertiser.stopAdvertising(adapter)
                                             viewModel.clearDiscoveredDevices()
                                         }
@@ -338,7 +343,7 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
         unbindService(serviceConnection)
         val adapter = bluetoothSupport.getBluetoothAdapter()
-        bluetoothScanner.stopScan(adapter)
+        bluetoothScanner.stopScanning(adapter)
         bluetoothAdvertiser.stopAdvertising(adapter)
     }
 
@@ -347,11 +352,10 @@ class MainActivity : ComponentActivity() {
         if (adapter != null && adapter.isEnabled) {
             val prefs = getSharedPreferences("HopLinkPrefs", MODE_PRIVATE)
             val savedName = prefs.getString("USER_ALIAS", "Anonymous") ?: "Anonymous"
-            bluetoothAdvertiser.startAdvertising(adapter, savedName)
+            val localNodeId = prefs.getInt("NODE_ID", -1)
 
-            bluetoothScanner.scanLeDevice(adapter) { discoveredDevice ->
-                viewModel.addDiscoveredDevice(discoveredDevice)
-            }
+            bluetoothAdvertiser.startAdvertising(adapter, savedName, localNodeId)
+            bluetoothScanner.startScanning(adapter)
         }
     }
 
@@ -407,7 +411,7 @@ class MainActivity : ComponentActivity() {
         )
 
         val notification = NotificationCompat.Builder(this, "HOPLINK_MESSAGES")
-            .setSmallIcon(android.R.drawable.stat_notify_chat) // Default Android chat icon
+            .setSmallIcon(android.R.drawable.stat_notify_chat)
             .setContentTitle(senderName)
             .setContentText(message)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

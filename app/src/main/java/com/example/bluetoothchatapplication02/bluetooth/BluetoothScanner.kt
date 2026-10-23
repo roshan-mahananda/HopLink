@@ -6,78 +6,70 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
-import com.example.bluetoothchatapplication02.model.BluetoothDevice
+import android.os.ParcelUuid
+import android.util.Log
+import java.nio.ByteBuffer
 
-@SuppressLint("MissingPermission")
-class BluetoothScanner {
-
-    private var scanning = false
-    private var leScanCallback: ScanCallback? = null
-
-    fun findPairedDevices(bluetoothAdapter: BluetoothAdapter): List<BluetoothDevice> {
-        val pairedDevices = bluetoothAdapter.bondedDevices
-        return pairedDevices.map { device ->
-            BluetoothDevice(
-                deviceName = device.name ?: "Unknown Device",
-                deviceAddress = device.address
-            )
-        }
-    }
+class BluetoothScanner(
+    private val onDeviceFound: (deviceAddress: String, deviceName: String, nodeId: Int) -> Unit
+) {
+    private var isScanning = false
+    private var scanCallback: ScanCallback? = null
 
     @SuppressLint("MissingPermission")
-    fun scanLeDevice(
-        bluetoothAdapter: BluetoothAdapter?,
-        onDeviceFound: (BluetoothDevice) -> Unit
-    ) {
-        val bluetoothLeScanner = bluetoothAdapter?.bluetoothLeScanner ?: return
+    fun startScanning(bluetoothAdapter: BluetoothAdapter?) {
+        val scanner = bluetoothAdapter?.bluetoothLeScanner
+        if (scanner == null || isScanning) return
 
-        if (scanning) {
-            leScanCallback?.let { bluetoothLeScanner.stopScan(it) }
-            scanning = false
-        }
-
-        leScanCallback = object : ScanCallback() {
-            override fun onScanResult(callbackType: Int, result: ScanResult) {
-                super.onScanResult(callbackType, result)
-
-                val address = result.device.address
-                val serviceData = result.scanRecord?.getServiceData(HopLinkConfig.SERVICE_UUID)
-
-                val extractedName = if (serviceData != null) {
-                    String(serviceData, Charsets.UTF_8)
-                } else {
-                    val uniqueId = address.takeLast(5).replace(":", "")
-                    "HopNode-$uniqueId"
-                }
-
-                val customDevice = BluetoothDevice(
-                    deviceName = extractedName,
-                    deviceAddress = address,
-                    userAlias = extractedName
-                )
-
-                onDeviceFound(customDevice)
-            }
-        }
 
         val filter = ScanFilter.Builder()
             .setServiceUuid(HopLinkConfig.SERVICE_UUID)
             .build()
+
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
 
-        scanning = true
-        bluetoothLeScanner.startScan(listOf(filter), settings, leScanCallback)
+        scanCallback = object : ScanCallback() {
+            @SuppressLint("MissingPermission")
+            override fun onScanResult(callbackType: Int, result: ScanResult) {
+                val scanRecord = result.scanRecord ?: return
+                val serviceData = scanRecord.getServiceData(HopLinkConfig.SERVICE_UUID)
+
+                if (serviceData != null && serviceData.size >= 4) {
+                    val buffer = ByteBuffer.wrap(serviceData)
+
+                    val nodeId = buffer.int
+
+                    val nameBytes = ByteArray(serviceData.size - 4)
+                    buffer.get(nameBytes)
+                    val deviceName = String(nameBytes, Charsets.UTF_8)
+
+                    Log.d("BluetoothScanner", "Discovered: $deviceName (Node: $nodeId) at ${result.device.address}")
+
+                    onDeviceFound(result.device.address, deviceName, nodeId)
+                }
+            }
+
+            override fun onScanFailed(errorCode: Int) {
+                Log.e("BluetoothScanner", "Scan failed with error: $errorCode")
+                isScanning = false
+            }
+        }
+
+        scanner.startScan(listOf(filter), settings, scanCallback)
+        isScanning = true
+        Log.d("BluetoothScanner", "Started BLE scanning for mesh peers")
     }
 
     @SuppressLint("MissingPermission")
-    fun stopScan(bluetoothAdapter: BluetoothAdapter?) {
-        val bluetoothLeScanner = bluetoothAdapter?.bluetoothLeScanner ?: return
-        if (scanning) {
-            scanning = false
-            leScanCallback?.let { bluetoothLeScanner.stopScan(it) }
-            leScanCallback = null
+    fun stopScanning(bluetoothAdapter: BluetoothAdapter?) {
+        val scanner = bluetoothAdapter?.bluetoothLeScanner ?: return
+        scanCallback?.let {
+            scanner.stopScan(it)
+            isScanning = false
+            scanCallback = null
+            Log.d("BluetoothScanner", "Stopped BLE scanning")
         }
     }
 }
