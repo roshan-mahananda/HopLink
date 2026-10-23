@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+data class MeshPeer(val nodeId: Int, val name: String)
+
 class BluetoothViewModel(private val chatMessageDao: ChatMessageDao) : ViewModel() {
     private val _discoverableDevices = MutableStateFlow<List<BluetoothDevice>>(emptyList())
     private val _connectionStatus = MutableStateFlow("Disconnected")
@@ -29,6 +31,9 @@ class BluetoothViewModel(private val chatMessageDao: ChatMessageDao) : ViewModel
     private val _connectedDeviceName = MutableStateFlow("Connected Device")
     val connectedDeviceName: StateFlow<String> = _connectedDeviceName.asStateFlow()
 
+    private val _targetNodeId = MutableStateFlow<Int?>(null)
+    val targetNodeId: StateFlow<Int?> = _targetNodeId.asStateFlow()
+
     private val _currentPeerAddress = MutableStateFlow<String?>(null)
 
     init {
@@ -41,6 +46,19 @@ class BluetoothViewModel(private val chatMessageDao: ChatMessageDao) : ViewModel
                 } else {
                     _chatMessages.value = emptyList()
                 }
+            }
+        }
+    }
+
+    private val _meshPeers = MutableStateFlow<List<MeshPeer>>(emptyList())
+    val meshPeers: StateFlow<List<MeshPeer>> = _meshPeers.asStateFlow()
+
+    fun addMeshPeer(nodeId: Int, name: String) {
+        _meshPeers.update { currentPeers ->
+            if (currentPeers.any { it.nodeId == nodeId }) {
+                currentPeers
+            } else {
+                currentPeers + MeshPeer(nodeId, name)
             }
         }
     }
@@ -122,6 +140,10 @@ class BluetoothViewModel(private val chatMessageDao: ChatMessageDao) : ViewModel
 
     fun updateQueuedMessages(count: Int) {
         _queuedMessages.value = count
+    }
+
+    fun setTargetNodeId(nodeId: Int?) {
+        _targetNodeId.value = nodeId
     }
 }
 
