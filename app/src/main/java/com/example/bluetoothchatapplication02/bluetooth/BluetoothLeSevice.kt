@@ -155,8 +155,7 @@ class BluetoothLeService : Service() {
     }
 
     fun sendMeshMessage(targetNodeId: Int, message: String) {
-        val meshPayload = "MESH:$targetNodeId:$message"
-        sendMessage(meshPayload)
+        sendMessage(message, destinationId = targetNodeId)
     }
 
     fun sendPresenceAnnouncement() {
@@ -334,23 +333,6 @@ class BluetoothLeService : Service() {
         }
 
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
-            val rawData = characteristic.getStringValue(0) ?: ""
-
-            if (rawData.startsWith("MESH:")) {
-                val parts = rawData.split(":", limit=3)
-                if (parts.size == 3) {
-                    val targetNodeId = parts[1].toIntOrNull()
-                    val actualMessage = parts[2]
-
-                    if (targetNodeId == myNodeId) {
-                        broadcastUpdate(ACTION_DATA_AVAILABLE, actualMessage)
-                    } else if (targetNodeId != null) {
-                        Log.d("BluetoothLeService", "Relaying mesh message to node $targetNodeId")
-                        sendMeshMessage(targetNodeId, actualMessage)
-                    }
-                }
-            }
-
             Log.d(TAG, "Client received data (Legacy)")
             processIncomingData(characteristic.value, gatt.device.address)
         }

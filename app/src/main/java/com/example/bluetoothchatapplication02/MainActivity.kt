@@ -143,11 +143,17 @@ class MainActivity : ComponentActivity() {
 
         bluetoothSupport = BluetoothSupport(this)
 
-        // Initialize scanner with the new callback to capture nodeId
         bluetoothScanner = BluetoothScanner { address, name, nodeId ->
             viewModel.addMeshPeer(nodeId, name)
-        }
 
+            viewModel.addDiscoveredDevice(
+                com.example.bluetoothchatapplication02.model.BluetoothDevice(
+                    deviceAddress = address,
+                    deviceName = name,
+                    userAlias = name
+                )
+            )
+        }
         bluetoothAdvertiser = BluetoothAdvertiser()
 
         createNotificationChannel()

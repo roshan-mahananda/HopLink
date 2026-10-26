@@ -33,18 +33,13 @@ class BluetoothViewModel(private val chatMessageDao: ChatMessageDao) : ViewModel
 
     private val _targetNodeId = MutableStateFlow<Int?>(null)
     val targetNodeId: StateFlow<Int?> = _targetNodeId.asStateFlow()
-
-    private val _currentPeerAddress = MutableStateFlow<String?>(null)
+        private val _currentPeerAddress = MutableStateFlow("MESH_SESSION")
 
     init {
         viewModelScope.launch {
             _currentPeerAddress.collectLatest { address ->
-                if (address != null) {
-                    chatMessageDao.getMessagesForDevice(address).collectLatest { dbMessages ->
-                        _chatMessages.value = dbMessages
-                    }
-                } else {
-                    _chatMessages.value = emptyList()
+                chatMessageDao.getMessagesForDevice(address).collectLatest { dbMessages ->
+                    _chatMessages.value = dbMessages
                 }
             }
         }
@@ -72,10 +67,10 @@ class BluetoothViewModel(private val chatMessageDao: ChatMessageDao) : ViewModel
     }
 
     fun addDiscoveredDevice(device: BluetoothDevice) {
-        _discoverableDevices.update { currentDevices->
-            if(currentDevices.any{it.deviceAddress.equals(device.deviceAddress, ignoreCase = true)}){
+        _discoverableDevices.update { currentDevices ->
+            if(currentDevices.any { it.deviceAddress.equals(device.deviceAddress, ignoreCase = true) }) {
                 currentDevices
-            }else{
+            } else {
                 currentDevices + device
             }
         }
@@ -111,22 +106,20 @@ class BluetoothViewModel(private val chatMessageDao: ChatMessageDao) : ViewModel
     }
 
     fun receiveChatMessage(message: String) {
-        val currentAddress = _currentPeerAddress.value ?: return
         saveMessageToDatabase(
             text = message,
             senderName = _connectedDeviceName.value,
             isFromMe = false,
-            deviceAddress = currentAddress
+            deviceAddress = _currentPeerAddress.value
         )
     }
 
     fun addLocalMessage(text: String, myName: String) {
-        val currentAddress = _currentPeerAddress.value ?: return
         saveMessageToDatabase(
             text = text,
             senderName = myName,
             isFromMe = true,
-            deviceAddress = currentAddress
+            deviceAddress = _currentPeerAddress.value
         )
     }
 
