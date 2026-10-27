@@ -68,7 +68,13 @@ class BluetoothViewModel(private val chatMessageDao: ChatMessageDao) : ViewModel
 
     fun addDiscoveredDevice(device: BluetoothDevice) {
         _discoverableDevices.update { currentDevices ->
-            if(currentDevices.any { it.deviceAddress.equals(device.deviceAddress, ignoreCase = true) }) {
+            val existingDevice = currentDevices.find { it.deviceName == device.deviceName }
+
+            if (existingDevice != null) {
+                currentDevices.map {
+                    if (it.deviceName == device.deviceName) device else it
+                }
+            } else if (currentDevices.any { it.deviceAddress.equals(device.deviceAddress, ignoreCase = true) }) {
                 currentDevices
             } else {
                 currentDevices + device
