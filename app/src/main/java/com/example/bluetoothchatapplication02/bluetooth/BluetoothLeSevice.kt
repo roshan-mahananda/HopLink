@@ -188,7 +188,8 @@ class BluetoothLeService : Service() {
             seenMessageIds.remove(oldestId)
         }
 
-        val textBytes = ByteArray(payloadLength.toInt())
+        val safePayloadLen = minOf(payloadLength.toInt(), value.size - 15)
+        val textBytes = ByteArray(safePayloadLen)
         buffer.get(textBytes)
         val receivedText = String(textBytes, Charsets.UTF_8)
 
@@ -295,10 +296,15 @@ class BluetoothLeService : Service() {
     private val bluetoothGattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
-                Log.d(TAG, "Client: Connected to server. Discovering services...")
                 broadcastUpdate(ACTION_GATT_CONNECTED)
-                gatt.discoverServices()
+                gatt.requestMtu(512)
             }
+        }
+
+        override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+            super.onMtuChanged(gatt, mtu, status)
+            Log.d("BluetoothLeService", "MTU changed to: $mtu")
+            gatt.discoverServices()
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
