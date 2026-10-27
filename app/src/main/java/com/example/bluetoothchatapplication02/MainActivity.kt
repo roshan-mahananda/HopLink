@@ -289,14 +289,10 @@ class MainActivity : ComponentActivity() {
                                     peerName = connectedPeerName,
                                     messages = chatMessages,
                                     onSendMessage = { messageText ->
-                                        viewModel.addLocalMessage(messageText, savedUsername)
+                                        viewModel.addLocalMessage(messageText, myName = "Me")
 
-                                        val currentTargetId = targetNodeId
-                                        if (currentTargetId != null) {
-                                            bluetoothService?.sendMeshMessage(currentTargetId, messageText)
-                                        } else {
-                                            bluetoothService?.sendMessage(messageText) // Direct 1-hop message
-                                        }
+                                        val targetId : Int = viewModel.targetNodeId.value ?: 0
+                                        bluetoothService?.sendMeshMessage(targetId, messageText)
                                     },
                                     onBackClick = {
                                         currentRoute = Screen.Home.route
