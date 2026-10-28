@@ -18,7 +18,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.bluetoothchatapplication02.R
 import com.example.bluetoothchatapplication02.ui.components.BluePrimary
-import com.example.bluetoothchatapplication02.ui.components.CardBackground
 
 @Composable
 fun HopLinkHeader(
@@ -32,14 +31,23 @@ fun HopLinkHeader(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column {
-            Text(text = "HopLink", fontWeight = FontWeight.ExtraBold, fontSize = 32.sp)
-            Text(text = "Broadcasting as: $userName", color = Color.Gray, fontSize = 14.sp)
+            Text(
+                text = "HopLink",
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 32.sp,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Text(
+                text = "Broadcasting as: $userName",
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                fontSize = 14.sp
+            )
         }
         IconButton(onClick = onEditClick) {
             Icon(
                 painterResource(R.drawable.edit_24px),
                 contentDescription = "Edit Name",
-                tint = Color.Gray
+                tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
             )
         }
     }
@@ -81,8 +89,8 @@ fun MainToggleCard(isBluetoothOn: Boolean, onToggle: (Boolean) -> Unit) {
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = BluePrimary,
                     checkedTrackColor = Color.White,
-                    uncheckedThumbColor = Color.LightGray,
-                    uncheckedTrackColor = Color.DarkGray
+                    uncheckedThumbColor = MaterialTheme.colorScheme.surface,
+                    uncheckedTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
                 )
             )
         }
@@ -97,7 +105,7 @@ fun DashboardCard(
     iconBgColor: Color,
     badgeText: String,
     badgeBgColor: Color,
-    badgeTextColor: Color = Color.White,
+    badgeTextColor: Color = MaterialTheme.colorScheme.onPrimary,
     isCircleBadge: Boolean = false,
     onClick: (() -> Unit)? = null
 ) {
@@ -107,7 +115,7 @@ fun DashboardCard(
             .padding(vertical = 6.dp)
             .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = CardBackground),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Row(
@@ -126,7 +134,7 @@ fun DashboardCard(
                 Icon(
                     painter = icon,
                     contentDescription = null,
-                    tint = Color.Unspecified
+                    tint = MaterialTheme.colorScheme.onSurface
                 )
             }
 
@@ -137,11 +145,11 @@ fun DashboardCard(
                     text = title,
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,
-                    color = Color.Black
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = subtitle,
-                    color = Color.Gray,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     fontSize = 14.sp,
                     lineHeight = 18.sp
                 )
@@ -167,7 +175,7 @@ fun DashboardCard(
 
 @Composable
 fun HopLinkDashboardScreen(
-    userName: String, // Add this
+    userName: String,
     discoveredCount: Int,
     isBluetoothOn: Boolean,
     activeRelaysCount: Int,
@@ -188,9 +196,10 @@ fun HopLinkDashboardScreen(
             title = "Nearby Devices",
             subtitle = if (isBluetoothOn) "Scanning via\nBluetooth" else "Bluetooth is off",
             icon = painterResource(R.drawable.nearby_24px),
-            iconBgColor = Color(0xFFE8F0FE),
+            iconBgColor = MaterialTheme.colorScheme.primaryContainer,
             badgeText = discoveredCount.toString(),
-            badgeBgColor = if (discoveredCount > 0) BluePrimary else Color.LightGray,
+            badgeBgColor = if (discoveredCount > 0) BluePrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+            badgeTextColor = if (discoveredCount > 0) Color.White else MaterialTheme.colorScheme.onSurface,
             isCircleBadge = true,
             onClick = onDiscoverClick
         )
@@ -199,19 +208,20 @@ fun HopLinkDashboardScreen(
             title = "Relay Active",
             subtitle = if (activeRelaysCount > 0) "You are forwarding\n$activeRelaysCount messages" else "No active relays",
             icon = painterResource(R.drawable.schedule_send_24px),
-            iconBgColor = Color(0xFFE6F4EA),
+            iconBgColor = MaterialTheme.colorScheme.secondaryContainer,
             badgeText = if (activeRelaysCount > 0) "ON" else "OFF",
-            badgeBgColor = if (activeRelaysCount > 0) Color(0xFF34A853) else Color.LightGray
+            badgeBgColor = if (activeRelaysCount > 0) Color(0xFF34A853) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+            badgeTextColor = if (activeRelaysCount > 0) Color.White else MaterialTheme.colorScheme.onSurface
         )
 
         DashboardCard(
             title = "Messages Queued",
             subtitle = if (queuedMessagesCount > 0) "Waiting for a relay\npath" else "Queue is empty",
             icon = painterResource(R.drawable.message_queue),
-            iconBgColor = Color(0xFFFFF3E0),
+            iconBgColor = MaterialTheme.colorScheme.tertiaryContainer,
             badgeText = queuedMessagesCount.toString(),
-            badgeBgColor = Color(0xFFE0E0E0),
-            badgeTextColor = if (queuedMessagesCount > 0) Color.DarkGray else Color.Gray
+            badgeBgColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+            badgeTextColor = MaterialTheme.colorScheme.onSurface
         )
     }
 }

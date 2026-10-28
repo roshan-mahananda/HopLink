@@ -1,9 +1,7 @@
 package com.example.bluetoothchatapplication02.ui.components
 
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -26,7 +24,8 @@ fun HopLinkBottomNav(currentRoute: String, onItemSelected: (Screen) -> Unit) {
     val items = listOf(Screen.Home, Screen.Discover, Screen.Chats, Screen.SOS)
 
     NavigationBar(
-        containerColor = Color.White,
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = 8.dp
     ) {
         items.forEach { screen ->
@@ -41,11 +40,11 @@ fun HopLinkBottomNav(currentRoute: String, onItemSelected: (Screen) -> Unit) {
                 selected = currentRoute == screen.route,
                 onClick = { onItemSelected(screen) },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = BluePrimary,
-                    selectedTextColor = BluePrimary,
-                    unselectedIconColor = Color.Gray,
-                    unselectedTextColor = Color.Gray,
-                    indicatorColor = Color(0xFFE8F0FE)
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    indicatorColor = MaterialTheme.colorScheme.primaryContainer
                 )
             )
         }

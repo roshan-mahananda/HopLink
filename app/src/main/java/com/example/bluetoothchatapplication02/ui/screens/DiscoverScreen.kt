@@ -15,7 +15,6 @@ import androidx.compose.ui.unit.sp
 import com.example.bluetoothchatapplication02.model.BluetoothDevice
 import com.example.bluetoothchatapplication02.viewmodel.MeshPeer
 import com.example.bluetoothchatapplication02.ui.components.BluePrimary
-import com.example.bluetoothchatapplication02.ui.components.CardBackground
 
 @Composable
 fun DiscoverScreen(
@@ -33,7 +32,7 @@ fun DiscoverScreen(
             text = "Discovered Mesh Nodes",
             fontWeight = FontWeight.ExtraBold,
             fontSize = 24.sp,
-            color = Color.Black,
+            color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
@@ -53,7 +52,10 @@ fun DiscoverScreen(
 
             if (devices.isEmpty()) {
                 item {
-                    Text(text = "Scanning for nearby HopLink nodes...", color = Color.Gray)
+                    Text(
+                        text = "Scanning for nearby HopLink nodes...",
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                    )
                 }
             } else {
                 items(devices) { device ->
@@ -67,14 +69,17 @@ fun DiscoverScreen(
                     text = "Extended Mesh Network (Out of Range)",
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
-                    color = Color.DarkGray,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             }
 
             if (meshPeers.isEmpty()) {
                 item {
-                    Text(text = "No distant nodes detected on the mesh.", color = Color.Gray)
+                    Text(
+                        text = "No distant nodes detected on the mesh.",
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                    )
                 }
             } else {
                 items(meshPeers) { peer ->
@@ -94,7 +99,7 @@ fun DeviceCard(
         onClick = { onDeviceClick(device) },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = CardBackground)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Row(
             modifier = Modifier
@@ -109,26 +114,26 @@ fun DeviceCard(
                         text = device.userAlias ?: device.deviceName,
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,
-                        color = Color.Black
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFFE8F0FE)
+                        color = MaterialTheme.colorScheme.primaryContainer
                     ) {
                         Text(
                             text = "BLE Node",
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = BluePrimary
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
                 }
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = device.deviceAddress,
-                    color = Color.Gray,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     fontSize = 12.sp
                 )
             }
@@ -153,7 +158,7 @@ fun MeshPeerCard(
         onClick = { onMeshPeerClick(peer) },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)) // Slightly different background for mesh nodes
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Row(
             modifier = Modifier
@@ -168,36 +173,36 @@ fun MeshPeerCard(
                         text = peer.name,
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,
-                        color = Color.Black
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFFEFEFEF)
+                        color = MaterialTheme.colorScheme.secondaryContainer
                     ) {
                         Text(
                             text = "Mesh Node",
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.DarkGray
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                     }
                 }
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "Node ID: ${peer.nodeId}",
-                    color = Color.Gray,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     fontSize = 12.sp
                 )
             }
 
             Button(
                 onClick = { onMeshPeerClick(peer) },
-                colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Text("Message", color = Color.White, fontSize = 12.sp)
+                Text("Message", color = MaterialTheme.colorScheme.onSecondary, fontSize = 12.sp)
             }
         }
     }

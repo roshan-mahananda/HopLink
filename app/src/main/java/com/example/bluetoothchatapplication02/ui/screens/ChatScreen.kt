@@ -45,11 +45,13 @@ fun ChatScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         },
-        containerColor = Color(0xFFF5F6F8)
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -76,8 +78,8 @@ fun ChatScreen(
 
 @Composable
 fun MessageBubble(message: ChatMessage) {
-    val bubbleColor = if (message.isFromMe) BluePrimary else Color.White
-    val textColor = if (message.isFromMe) Color.White else Color.Black
+    val bubbleColor = if (message.isFromMe) BluePrimary else MaterialTheme.colorScheme.surfaceVariant
+    val textColor = if (message.isFromMe) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
 
     val shape = if (message.isFromMe) {
         RoundedCornerShape(16.dp, 16.dp, 0.dp, 16.dp)
@@ -98,7 +100,7 @@ fun MessageBubble(message: ChatMessage) {
                 Text(
                     text = message.senderName,
                     fontSize = 12.sp,
-                    color = Color.Gray,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     modifier = Modifier.padding(start = 8.dp, bottom = 4.dp)
                 )
             }
@@ -120,7 +122,7 @@ fun ChatInputBar(onSendMessage: (String) -> Unit) {
     var textState by remember { mutableStateOf("") }
 
     Surface(
-        color = Color.White,
+        color = MaterialTheme.colorScheme.surface,
         shadowElevation = 4.dp
     ) {
         Row(
@@ -132,12 +134,22 @@ fun ChatInputBar(onSendMessage: (String) -> Unit) {
             OutlinedTextField(
                 value = textState,
                 onValueChange = { textState = it },
-                placeholder = { Text("Type a message...") },
+                placeholder = {
+                    Text(
+                        text = "Type a message...",
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                },
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(24.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedBorderColor = Color.LightGray,
-                    focusedBorderColor = BluePrimary
+                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                    focusedBorderColor = BluePrimary,
+                    cursorColor = BluePrimary
                 ),
                 maxLines = 4
             )
