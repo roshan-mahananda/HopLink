@@ -10,7 +10,17 @@ import kotlinx.coroutines.flow.Flow
 interface ChatMessageDao {
     @Insert
     suspend fun insertMessage(message: ChatMessage)
-
     @Query("SELECT * FROM chat_messages WHERE deviceAddress = :address ORDER BY timestamp ASC")
     fun getMessagesForDevice(address: String): Flow<List<ChatMessage>>
+
+    @Query("""
+        SELECT * FROM chat_messages 
+        WHERE timestamp IN (
+            SELECT MAX(timestamp) 
+            FROM chat_messages 
+            GROUP BY deviceAddress
+        ) 
+        ORDER BY timestamp DESC
+    """)
+    fun getRecentConversations(): Flow<List<ChatMessage>>
 }
