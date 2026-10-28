@@ -12,7 +12,8 @@ import android.util.Log
 import java.nio.ByteBuffer
 
 class BluetoothScanner(
-    private val onDeviceFound: (deviceAddress: String, deviceName: String, nodeId: Int) -> Unit
+    private val onDeviceFound: (deviceAddress: String, deviceName: String, nodeId: Int) -> Unit,
+    private val onMeshPayloadReceived: (ByteArray) -> Unit
 ) {
     private var isScanning = false
     private var scanCallback: ScanCallback? = null
@@ -21,7 +22,7 @@ class BluetoothScanner(
     private val cycleRunnable = object : Runnable {
         override fun run() {
             restartScan()
-            scanCycler.postDelayed(this, 12000) // Restart every 12 seconds
+            scanCycler.postDelayed(this, 12000)
         }
     }
 
@@ -45,16 +46,20 @@ class BluetoothScanner(
                 val scanRecord = result.scanRecord ?: return
                 val serviceData = scanRecord.getServiceData(HopLinkConfig.SERVICE_UUID)
 
-                if (serviceData != null && serviceData.size >= 4) {
-                    val buffer = ByteBuffer.wrap(serviceData)
-                    val nodeId = buffer.int
+                if (serviceData != null) {
+                    if (serviceData.size >= 15) {
+                        Log.d("BluetoothScanner", "Caught ambient mesh payload from ${result.device.address}")
+                        onMeshPayloadReceived(serviceData)
+                    } else if (serviceData.size >= 4) {
+                        val buffer = ByteBuffer.wrap(serviceData)
+                        val nodeId = buffer.int
+                        val nameBytes = ByteArray(serviceData.size - 4)
+                        buffer.get(nameBytes)
+                        val deviceName = String(nameBytes, Charsets.UTF_8)
 
-                    val nameBytes = ByteArray(serviceData.size - 4)
-                    buffer.get(nameBytes)
-                    val deviceName = String(nameBytes, Charsets.UTF_8)
-
-                    Log.d("BluetoothScanner", "Discovered: $deviceName (Node: $nodeId) at ${result.device.address}")
-                    onDeviceFound(result.device.address, deviceName, nodeId)
+                        Log.d("BluetoothScanner", "Discovered: $deviceName (Node: $nodeId)")
+                        onDeviceFound(result.device.address, deviceName, nodeId)
+                    }
                 }
             }
 

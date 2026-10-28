@@ -5,11 +5,16 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import java.nio.ByteBuffer
 
 class BluetoothAdvertiser {
     private var advertiseCallback: AdvertiseCallback? = null
+    private var messageCallback: AdvertiseCallback? = null
+    private val handler = Handler(Looper.getMainLooper())
+
     var isAdvertising = false
         private set
 
@@ -34,7 +39,7 @@ class BluetoothAdvertiser {
 
         val data = AdvertiseData.Builder()
             .addServiceUuid(HopLinkConfig.SERVICE_UUID)
-            .addServiceData(HopLinkConfig.SERVICE_UUID, serviceData) // Embed Node ID + Name
+            .addServiceData(HopLinkConfig.SERVICE_UUID, serviceData)
             .setIncludeDeviceName(false)
             .build()
 
@@ -66,5 +71,44 @@ class BluetoothAdvertiser {
             advertiseCallback = null
             Log.d("BluetoothAdvertiser", "Advertising stopped")
         }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun broadcastMeshMessage(bluetoothAdapter: BluetoothAdapter?, payload: ByteArray, onComplete: () -> Unit) {
+        val advertiser = bluetoothAdapter?.bluetoothLeAdvertiser ?: return
+
+        val settings = AdvertiseSettings.Builder()
+            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
+            .setConnectable(false)
+            .build()
+
+        val data = AdvertiseData.Builder()
+            .addServiceUuid(HopLinkConfig.SERVICE_UUID)
+            .addServiceData(HopLinkConfig.SERVICE_UUID, payload)
+            .setIncludeDeviceName(false)
+            .build()
+
+        messageCallback = object : AdvertiseCallback() {
+            override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
+                Log.d("BluetoothAdvertiser", "Broadcasting mesh payload successfully")
+            }
+            override fun onStartFailure(errorCode: Int) {
+                Log.e("BluetoothAdvertiser", "Payload broadcast failed: $errorCode")
+            }
+        }
+
+        stopAdvertising(bluetoothAdapter)
+        advertiser.startAdvertising(settings, data, null, messageCallback)
+
+        handler.postDelayed({
+            @SuppressLint("MissingPermission")
+            messageCallback?.let {
+                advertiser.stopAdvertising(it)
+                messageCallback = null
+                Log.d("BluetoothAdvertiser", "Stopped mesh payload broadcast")
+            }
+            onComplete()
+        }, 3000)
     }
 }

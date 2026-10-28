@@ -145,17 +145,22 @@ class MainActivity : ComponentActivity() {
 
         bluetoothSupport = BluetoothSupport(this)
 
-        bluetoothScanner = BluetoothScanner { address, name, nodeId ->
-            viewModel.addMeshPeer(nodeId, name)
+        bluetoothScanner = BluetoothScanner(
+            onDeviceFound = { address, name, nodeId ->
+                viewModel.addMeshPeer(nodeId, name)
 
-            viewModel.addDiscoveredDevice(
-                com.example.bluetoothchatapplication02.model.BluetoothDevice(
-                    deviceAddress = address,
-                    deviceName = name,
-                    userAlias = name
+                viewModel.addDiscoveredDevice(
+                    com.example.bluetoothchatapplication02.model.BluetoothDevice(
+                        deviceAddress = address,
+                        deviceName = name,
+                        userAlias = name
+                    )
                 )
-            )
-        }
+            },
+            onMeshPayloadReceived = { payload ->
+                bluetoothService?.processAmbientPayload(payload)
+            }
+        )
         bluetoothAdvertiser = BluetoothAdvertiser()
 
         createNotificationChannel()

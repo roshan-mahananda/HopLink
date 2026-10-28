@@ -34,6 +34,8 @@ class BluetoothLeService : Service() {
     private val seenMessageIds = LinkedHashSet<Int>()
     private val MAX_CACHE_SIZE = 2000
 
+    private val meshAdvertiser = BluetoothAdvertiser()
+
     private var myNodeId: Int = -1
 
     inner class LocalBinder : Binder() {
@@ -148,10 +150,16 @@ class BluetoothLeService : Service() {
         buffer.putShort(payloadLength)
         buffer.put(stringBytes)
 
+        val payload = buffer.array()
         seenMessageIds.add(messageId)
 
         Log.d(TAG, "Sending Msg ID $messageId | From: $myNodeId -> To: $destinationId | TTL: $ttl")
-        dispatchBytes(buffer.array())
+
+        dispatchBytes(payload)
+
+        meshAdvertiser.broadcastMeshMessage(bluetoothAdapter, payload) {
+            Log.d(TAG, "Finished ambient broadcast for local message $messageId")
+        }
     }
 
     fun sendMeshMessage(targetNodeId: Int, message: String) {
@@ -162,6 +170,10 @@ class BluetoothLeService : Service() {
         val prefs = getSharedPreferences("HopLinkPrefs", Context.MODE_PRIVATE)
         val myName = prefs.getString("USER_ALIAS", "Anonymous") ?: "Anonymous"
         sendMessage("[SYS_ANNOUNCE]:$myName", destinationId = 0)
+    }
+
+    fun processAmbientPayload(payload: ByteArray, senderAddress: String = "AIR_BROADCAST") {
+        processIncomingData(payload, senderAddress)
     }
 
     private fun processIncomingData(value: ByteArray, address: String) {
@@ -234,7 +246,13 @@ class BluetoothLeService : Service() {
             forwardBuffer.putShort(payloadLength)
             forwardBuffer.put(textBytes)
 
-            dispatchBytes(forwardBuffer.array())
+            val payload = forwardBuffer.array()
+
+            dispatchBytes(payload)
+
+            meshAdvertiser.broadcastMeshMessage(bluetoothAdapter, payload) {
+                Log.d(TAG, "Finished ambient broadcast for relayed packet $messageId")
+            }
         }
     }
 
