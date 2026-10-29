@@ -370,8 +370,19 @@ class MainActivity : ComponentActivity() {
 
                             Screen.SOS.route -> {
                                 SosScreen(
-                                    onTriggerSos = {
+                                    onTriggerSos = { emergencyMessage ->
                                         viewModel.updateQueuedMessages(queuedMessages + 1)
+
+                                        bluetoothService?.sendMessage(
+                                            message = emergencyMessage,
+                                            destinationId = 0
+                                        )
+
+                                        viewModel.addLocalMessage(
+                                            text = emergencyMessage,
+                                            peerName = "Global Broadcast (SOS)",
+                                            targetAddress = "0"
+                                        )
                                     }
                                 )
                             }
