@@ -137,7 +137,7 @@ fun DeviceCard(
                 onClick = { onDeviceClick(device) },
                 colors = ButtonDefaults.buttonColors(containerColor = BluePrimary)
             ) {
-                Text("Connect", color = Color.White)
+                Text("Message", color = Color.White)
             }
         }
     }
