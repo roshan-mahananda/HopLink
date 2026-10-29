@@ -200,7 +200,14 @@ class BluetoothLeService : Service() {
             seenMessageIds.remove(oldestId)
         }
 
-        val safePayloadLen = minOf(payloadLength.toInt(), value.size - 15)
+        if (senderId == myNodeId) {
+            Log.d(TAG, "Dropped loopback message originating from this device ($myNodeId)")
+            return
+        }
+
+        val safePayloadLen = minOf(payloadLength.toInt() and 0xFFFF, value.size - 15)
+        if (safePayloadLen <= 0) return
+
         val textBytes = ByteArray(safePayloadLen)
         buffer.get(textBytes)
         val receivedText = String(textBytes, Charsets.UTF_8)
@@ -227,6 +234,7 @@ class BluetoothLeService : Service() {
                 sendBroadcast(Intent(ACTION_DATA_AVAILABLE).apply {
                     setPackage(packageName)
                     putExtra(EXTRA_SENDER_ID, senderId)
+                    putExtra(EXTRA_ADDRESS, address)
                     putExtra(EXTRA_DATA, receivedText)
                 })
             }

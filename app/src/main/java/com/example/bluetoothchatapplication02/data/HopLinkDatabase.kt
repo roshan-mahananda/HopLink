@@ -6,16 +6,17 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.example.bluetoothchatapplication02.model.ChatMessage
 
-@Database(entities = [ChatMessage::class], version = 1, exportSchema = false)
+@Database(entities = [ChatMessage::class], version = 2, exportSchema = false)
 abstract class HopLinkDatabase : RoomDatabase() {
+
     abstract fun chatMessageDao(): ChatMessageDao
 
-    companion object{
+    companion object {
         @Volatile
         private var INSTANCE: HopLinkDatabase? = null
 
-        fun getDatabase(context: Context): HopLinkDatabase{
-            return INSTANCE ?: synchronized(this){
+        fun getDatabase(context: Context): HopLinkDatabase {
+            return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     HopLinkDatabase::class.java,

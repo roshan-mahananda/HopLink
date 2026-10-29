@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +55,8 @@ import com.example.bluetoothchatapplication02.viewmodel.BluetoothViewModelFactor
 class MainActivity : ComponentActivity() {
 
     private var activeScreen = Screen.Home.route
+    private var activeChatAddress: String? = null
+
     private lateinit var bluetoothSupport: BluetoothSupport
     private lateinit var bluetoothScanner: BluetoothScanner
     private lateinit var bluetoothAdvertiser: BluetoothAdvertiser
@@ -91,10 +94,14 @@ class MainActivity : ComponentActivity() {
 
                 BluetoothLeService.ACTION_DATA_AVAILABLE -> {
                     val message = intent.getStringExtra(BluetoothLeService.EXTRA_DATA) ?: return
-                    viewModel.receiveChatMessage(message)
+                    val senderId = intent.getIntExtra(BluetoothLeService.EXTRA_SENDER_ID, -1)
+                    val senderAddress = intent.getStringExtra(BluetoothLeService.EXTRA_ADDRESS) ?: "UNKNOWN"
 
-                    if (activeScreen != Screen.Chats.route) {
-                        val senderName = viewModel.connectedDeviceName.value
+                    viewModel.receiveChatMessage(message, senderId, senderAddress)
+
+                    val isViewingActiveChat = activeScreen == Screen.Chats.route && activeChatAddress != null
+                    if (!isViewingActiveChat) {
+                        val senderName = viewModel.meshPeers.value.find { it.nodeId == senderId }?.name ?: viewModel.connectedDeviceName.value
                         showNewMessageNotification(senderName, message)
                     }
                 }
@@ -175,7 +182,7 @@ class MainActivity : ComponentActivity() {
 
                 val meshPeers by viewModel.meshPeers.collectAsState()
 
-                var activeChatAddress by remember { mutableStateOf<String?>(null) }
+                var localChatAddress by remember { mutableStateOf<String?>(null) }
                 var activeChatName by remember { mutableStateOf("") }
 
                 var isHopLinkOn by remember {
@@ -184,6 +191,7 @@ class MainActivity : ComponentActivity() {
 
                 var currentRoute by remember { mutableStateOf(Screen.Home.route) }
                 activeScreen = currentRoute
+
                 var savedUsername by remember {
                     mutableStateOf(
                         getSharedPreferences("HopLinkPrefs", MODE_PRIVATE).getString("USER_ALIAS", "") ?: ""
@@ -232,6 +240,7 @@ class MainActivity : ComponentActivity() {
                         HopLinkBottomNav(currentRoute = currentRoute) { selectedScreen ->
                             if (selectedScreen.route == Screen.Chats.route && currentRoute != Screen.Chats.route) {
                                 activeChatAddress = null
+                                localChatAddress = null
                             }
                             currentRoute = selectedScreen.route
                         }
@@ -274,6 +283,13 @@ class MainActivity : ComponentActivity() {
                             }
 
                             Screen.Discover.route -> {
+                                LaunchedEffect(Unit) {
+                                    val adapter = bluetoothSupport.getBluetoothAdapter()
+                                    if (isHopLinkOn && adapter != null && adapter.isEnabled) {
+                                        startDiscovery()
+                                    }
+                                }
+
                                 DiscoverScreen(
                                     devices = discoveredDevices,
                                     meshPeers = meshPeers,
@@ -281,17 +297,21 @@ class MainActivity : ComponentActivity() {
                                         val targetName = device.userAlias ?: device.deviceName
                                         viewModel.setConnectedDeviceName(targetName)
                                         viewModel.setTargetNodeId(null)
+                                        viewModel.setCurrentPeerAddress(device.deviceAddress)
 
                                         bluetoothService?.connect(device.deviceAddress)
                                         activeChatAddress = device.deviceAddress
+                                        localChatAddress = device.deviceAddress
                                         activeChatName = targetName
                                         currentRoute = Screen.Chats.route
                                     },
                                     onMeshPeerClick = { peer ->
                                         viewModel.setConnectedDeviceName(peer.name)
                                         viewModel.setTargetNodeId(peer.nodeId)
+                                        viewModel.setCurrentPeerAddress(peer.nodeId.toString())
 
                                         activeChatAddress = peer.nodeId.toString()
+                                        localChatAddress = peer.nodeId.toString()
                                         activeChatName = peer.name
                                         currentRoute = Screen.Chats.route
                                     }
@@ -299,38 +319,50 @@ class MainActivity : ComponentActivity() {
                             }
 
                             Screen.Chats.route -> {
-                                if (activeChatAddress == null) {
+                                if (localChatAddress == null) {
                                     val recentChats by viewModel.recentConversations.collectAsState(initial = emptyList())
                                     ChatListScreen(
                                         conversations = recentChats,
                                         onChatClick = { address, name ->
                                             activeChatAddress = address
+                                            localChatAddress = address
                                             activeChatName = name
+                                            viewModel.setCurrentPeerAddress(address)
+                                            val nodeId = address.toIntOrNull()
+                                            viewModel.setTargetNodeId(nodeId)
+                                        },
+                                        onDeleteConversation = { targetAddress ->
+                                            viewModel.deleteConversation(targetAddress)
                                         }
                                     )
                                 } else {
                                     BackHandler {
                                         activeChatAddress = null
+                                        localChatAddress = null
                                     }
-                                    val chatMessages by viewModel.getChatStream(activeChatAddress!!).collectAsState(initial = emptyList())
+                                    val chatMessages by viewModel.getChatStream(localChatAddress!!).collectAsState(initial = emptyList())
 
                                     ChatScreen(
                                         peerName = activeChatName,
                                         messages = chatMessages,
                                         onSendMessage = { messageText ->
-                                            val currentTargetAddress = activeChatAddress ?: return@ChatScreen
+                                            val currentTargetAddress = localChatAddress ?: return@ChatScreen
 
                                             viewModel.addLocalMessage(
                                                 text = messageText,
-                                                myName = "Me",
+                                                peerName = activeChatName,
                                                 targetAddress = currentTargetAddress
                                             )
 
                                             val targetId: Int = viewModel.targetNodeId.value ?: 0
                                             bluetoothService?.sendMeshMessage(targetId, messageText)
                                         },
+                                        onDeleteMessage = { messageId ->
+                                            viewModel.deleteMessage(messageId)
+                                        },
                                         onBackClick = {
                                             activeChatAddress = null
+                                            localChatAddress = null
                                         }
                                     )
                                 }

@@ -15,7 +15,6 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.collections.emptyList
 
 data class MeshPeer(val nodeId: Int, val name: String)
 
@@ -28,20 +27,26 @@ class BluetoothViewModel(private val chatMessageDao: ChatMessageDao) : ViewModel
     val activeRelays: StateFlow<Int> = _activeRelays.asStateFlow()
     val queuedMessages: StateFlow<Int> = _queuedMessages.asStateFlow()
     private val _chatMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
-    val chatMessages: StateFlow<List<ChatMessage>> = _chatMessages.asStateFlow()
 
     private val _connectedDeviceName = MutableStateFlow("Connected Device")
     val connectedDeviceName: StateFlow<String> = _connectedDeviceName.asStateFlow()
 
     private val _targetNodeId = MutableStateFlow<Int?>(null)
     val targetNodeId: StateFlow<Int?> = _targetNodeId.asStateFlow()
-        private val _currentPeerAddress = MutableStateFlow("MESH_SESSION")
+
+    private val _currentPeerAddress = MutableStateFlow("")
+
+    fun setCurrentPeerAddress(address: String) {
+        _currentPeerAddress.value = address
+    }
 
     init {
         viewModelScope.launch {
             _currentPeerAddress.collectLatest { address ->
-                chatMessageDao.getMessagesForDevice(address).collectLatest { dbMessages ->
-                    _chatMessages.value = dbMessages
+                if (address.isNotEmpty()) {
+                    chatMessageDao.getMessagesForDevice(address).collectLatest { dbMessages ->
+                        _chatMessages.value = dbMessages
+                    }
                 }
             }
         }
@@ -60,10 +65,22 @@ class BluetoothViewModel(private val chatMessageDao: ChatMessageDao) : ViewModel
     fun addMeshPeer(nodeId: Int, name: String) {
         _meshPeers.update { currentPeers ->
             if (currentPeers.any { it.nodeId == nodeId }) {
-                currentPeers
+                currentPeers.map { if (it.nodeId == nodeId) MeshPeer(nodeId, name) else it }
             } else {
                 currentPeers + MeshPeer(nodeId, name)
             }
+        }
+    }
+
+    fun deleteMessage(messageId: Int) {
+        viewModelScope.launch {
+            chatMessageDao.deleteMessageById(messageId)
+        }
+    }
+
+    fun deleteConversation(deviceAddress: String) {
+        viewModelScope.launch {
+            chatMessageDao.deleteConversationByAddress(deviceAddress)
         }
     }
 
@@ -116,12 +133,15 @@ class BluetoothViewModel(private val chatMessageDao: ChatMessageDao) : ViewModel
         }
     }
 
-    fun receiveChatMessage(message: String) {
+    fun receiveChatMessage(message: String, senderId: Int, senderAddress: String) {
+        val targetAddress = if (senderId != -1) senderId.toString() else senderAddress
+        val peerName = _meshPeers.value.find { it.nodeId == senderId }?.name ?: _connectedDeviceName.value
+
         saveMessageToDatabase(
             text = message,
-            senderName = _connectedDeviceName.value,
+            senderName = peerName,
             isFromMe = false,
-            deviceAddress = _currentPeerAddress.value
+            deviceAddress = targetAddress
         )
     }
 
@@ -129,10 +149,10 @@ class BluetoothViewModel(private val chatMessageDao: ChatMessageDao) : ViewModel
         return chatMessageDao.getMessagesForDevice(deviceAddress)
     }
 
-    fun addLocalMessage(text: String, myName: String, targetAddress: String) {
+    fun addLocalMessage(text: String, peerName: String, targetAddress: String) {
         saveMessageToDatabase(
             text = text,
-            senderName = myName,
+            senderName = peerName,
             isFromMe = true,
             deviceAddress = targetAddress
         )

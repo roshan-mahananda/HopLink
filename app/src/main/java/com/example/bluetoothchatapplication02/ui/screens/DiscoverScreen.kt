@@ -23,6 +23,9 @@ fun DiscoverScreen(
     onDeviceClick: (BluetoothDevice) -> Unit,
     onMeshPeerClick: (MeshPeer) -> Unit
 ) {
+    val directDeviceNames = devices.mapNotNull { it.userAlias ?: it.deviceName }.toSet()
+    val filteredMeshPeers = meshPeers.filter { peer -> peer.name !in directDeviceNames }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -52,10 +55,16 @@ fun DiscoverScreen(
 
             if (devices.isEmpty()) {
                 item {
-                    Text(
-                        text = "Scanning for nearby HopLink nodes...",
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                    )
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Text(
+                            text = "Scanning for nearby HopLink nodes...",
+                            modifier = Modifier.padding(16.dp),
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
                 }
             } else {
                 items(devices) { device ->
@@ -74,15 +83,21 @@ fun DiscoverScreen(
                 )
             }
 
-            if (meshPeers.isEmpty()) {
+            if (filteredMeshPeers.isEmpty()) {
                 item {
-                    Text(
-                        text = "No distant nodes detected on the mesh.",
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                    )
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Text(
+                            text = "No distant nodes detected on the mesh.",
+                            modifier = Modifier.padding(16.dp),
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
                 }
             } else {
-                items(meshPeers) { peer ->
+                items(filteredMeshPeers) { peer ->
                     MeshPeerCard(peer = peer, onMeshPeerClick = onMeshPeerClick)
                 }
             }
@@ -102,48 +117,27 @@ fun DeviceCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = device.userAlias ?: device.deviceName,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer
-                    ) {
-                        Text(
-                            text = "BLE Node",
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = device.userAlias ?: device.deviceName,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
                 Text(
                     text = device.deviceAddress,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     fontSize = 12.sp
                 )
             }
-
             Button(
                 onClick = { onDeviceClick(device) },
-                colors = ButtonDefaults.buttonColors(containerColor = BluePrimary),
-                shape = RoundedCornerShape(8.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = BluePrimary)
             ) {
-                Text("Connect", color = Color.White, fontSize = 12.sp)
+                Text("Connect", color = Color.White)
             }
         }
     }
@@ -161,48 +155,27 @@ fun MeshPeerCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = peer.name,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer
-                    ) {
-                        Text(
-                            text = "Mesh Node",
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = peer.name,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
                 Text(
                     text = "Node ID: ${peer.nodeId}",
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     fontSize = 12.sp
                 )
             }
-
             Button(
                 onClick = { onMeshPeerClick(peer) },
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                shape = RoundedCornerShape(8.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
             ) {
-                Text("Message", color = MaterialTheme.colorScheme.onSecondary, fontSize = 12.sp)
+                Text("Message")
             }
         }
     }
