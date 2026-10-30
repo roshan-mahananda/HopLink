@@ -177,9 +177,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             BluetoothChatApplication02Theme {
                 val discoveredDevices by viewModel.discoveredDevices.collectAsState()
-                val activeRelays by viewModel.activeRelays.collectAsState()
-                val queuedMessages by viewModel.queuedMessages.collectAsState()
-
                 val meshPeers by viewModel.meshPeers.collectAsState()
 
                 var localChatAddress by remember { mutableStateOf<String?>(null) }
@@ -253,13 +250,16 @@ class MainActivity : ComponentActivity() {
                     ) {
                         when (currentRoute) {
                             Screen.Home.route -> {
+                                val directAddresses = discoveredDevices.map { it.deviceAddress }.toSet()
+                                val extendedPeersCount = meshPeers.count { peer -> peer.nodeId.toString() !in directAddresses }
+
                                 HopLinkDashboardScreen(
                                     userName = savedUsername,
                                     onEditClick = { showProfileDialog = true },
-                                    discoveredCount = discoveredDevices.size,
+                                    directDevicesCount = discoveredDevices.size,
+                                    extendedPeersCount = extendedPeersCount,
+                                    maxMeshReach = 10,
                                     isBluetoothOn = isHopLinkOn,
-                                    activeRelaysCount = activeRelays,
-                                    queuedMessagesCount = queuedMessages,
                                     onToggleBluetooth = { isOn ->
                                         isHopLinkOn = isOn
                                         val adapter = bluetoothSupport.getBluetoothAdapter()
@@ -371,8 +371,6 @@ class MainActivity : ComponentActivity() {
                             Screen.SOS.route -> {
                                 SosScreen(
                                     onTriggerSos = { emergencyMessage ->
-                                        viewModel.updateQueuedMessages(queuedMessages + 1)
-
                                         bluetoothService?.sendMessage(
                                             message = emergencyMessage,
                                             destinationId = 0

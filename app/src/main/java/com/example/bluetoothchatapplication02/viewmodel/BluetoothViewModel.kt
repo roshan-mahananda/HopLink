@@ -18,14 +18,13 @@ import kotlinx.coroutines.launch
 
 data class MeshPeer(val nodeId: Int, val name: String)
 
-class BluetoothViewModel(private val chatMessageDao: ChatMessageDao) : ViewModel() {
-    private val _discoverableDevices = MutableStateFlow<List<BluetoothDevice>>(emptyList())
-    private val _activeRelays = MutableStateFlow(0)
-    private val _queuedMessages = MutableStateFlow(0)
+class BluetoothViewModel(
+    private val chatMessageDao: ChatMessageDao
+) : ViewModel() {
 
+    private val _discoverableDevices = MutableStateFlow<List<BluetoothDevice>>(emptyList())
     val discoveredDevices: StateFlow<List<BluetoothDevice>> = _discoverableDevices.asStateFlow()
-    val activeRelays: StateFlow<Int> = _activeRelays.asStateFlow()
-    val queuedMessages: StateFlow<Int> = _queuedMessages.asStateFlow()
+
     private val _chatMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
 
     private val _connectedDeviceName = MutableStateFlow("Connected Device")
@@ -156,10 +155,6 @@ class BluetoothViewModel(private val chatMessageDao: ChatMessageDao) : ViewModel
             isFromMe = true,
             deviceAddress = targetAddress
         )
-    }
-
-    fun updateQueuedMessages(count: Int) {
-        _queuedMessages.value = count
     }
 
     fun setTargetNodeId(nodeId: Int?) {

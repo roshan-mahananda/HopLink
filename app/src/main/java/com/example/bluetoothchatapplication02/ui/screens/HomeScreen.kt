@@ -176,10 +176,10 @@ fun DashboardCard(
 @Composable
 fun HopLinkDashboardScreen(
     userName: String,
-    discoveredCount: Int,
+    directDevicesCount: Int,
+    extendedPeersCount: Int,
+    maxMeshReach: Int = 10,
     isBluetoothOn: Boolean,
-    activeRelaysCount: Int,
-    queuedMessagesCount: Int,
     onToggleBluetooth: (Boolean) -> Unit,
     onDiscoverClick: () -> Unit,
     onEditClick: () -> Unit
@@ -194,32 +194,34 @@ fun HopLinkDashboardScreen(
 
         DashboardCard(
             title = "Nearby Devices",
-            subtitle = if (isBluetoothOn) "Scanning via\nBluetooth" else "Bluetooth is off",
+            subtitle = if (isBluetoothOn) "Direct 1-hop range" else "Bluetooth is off",
             icon = painterResource(R.drawable.nearby_24px),
             iconBgColor = MaterialTheme.colorScheme.primaryContainer,
-            badgeText = discoveredCount.toString(),
-            badgeBgColor = if (discoveredCount > 0) BluePrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
-            badgeTextColor = if (discoveredCount > 0) Color.White else MaterialTheme.colorScheme.onSurface,
+            badgeText = directDevicesCount.toString(),
+            badgeBgColor = if (directDevicesCount > 0) BluePrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+            badgeTextColor = if (directDevicesCount > 0) Color.White else MaterialTheme.colorScheme.onSurface,
             isCircleBadge = true,
             onClick = onDiscoverClick
         )
 
         DashboardCard(
-            title = "Relay Active",
-            subtitle = if (activeRelaysCount > 0) "You are forwarding\n$activeRelaysCount messages" else "No active relays",
+            title = "Extended Peers",
+            subtitle = if (isBluetoothOn) "Out of range (>1 hop)" else "Mesh inactive",
             icon = painterResource(R.drawable.schedule_send_24px),
             iconBgColor = MaterialTheme.colorScheme.secondaryContainer,
-            badgeText = if (activeRelaysCount > 0) "ON" else "OFF",
-            badgeBgColor = if (activeRelaysCount > 0) Color(0xFF34A853) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
-            badgeTextColor = if (activeRelaysCount > 0) Color.White else MaterialTheme.colorScheme.onSurface
+            badgeText = extendedPeersCount.toString(),
+            badgeBgColor = if (extendedPeersCount > 0) Color(0xFF34A853) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+            badgeTextColor = if (extendedPeersCount > 0) Color.White else MaterialTheme.colorScheme.onSurface,
+            isCircleBadge = true,
+            onClick = onDiscoverClick
         )
 
         DashboardCard(
-            title = "Messages Queued",
-            subtitle = if (queuedMessagesCount > 0) "Waiting for a relay\npath" else "Queue is empty",
+            title = "Max Mesh Reach",
+            subtitle = "Network packet TTL limit",
             icon = painterResource(R.drawable.message_queue),
             iconBgColor = MaterialTheme.colorScheme.tertiaryContainer,
-            badgeText = queuedMessagesCount.toString(),
+            badgeText = "$maxMeshReach Hops",
             badgeBgColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
             badgeTextColor = MaterialTheme.colorScheme.onSurface
         )
