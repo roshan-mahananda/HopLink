@@ -295,23 +295,29 @@ class MainActivity : ComponentActivity() {
                                     meshPeers = meshPeers,
                                     onDeviceClick = { device ->
                                         val targetName = device.userAlias ?: device.deviceName
+
+                                        val knownPeer = meshPeers.find { it.name == targetName || it.nodeId.toString() == device.deviceAddress }
+                                        val targetAddress = knownPeer?.nodeId?.toString() ?: device.deviceAddress
+                                        val targetNodeId = knownPeer?.nodeId ?: device.deviceAddress.toIntOrNull()
+
                                         viewModel.setConnectedDeviceName(targetName)
-                                        viewModel.setTargetNodeId(null)
-                                        viewModel.setCurrentPeerAddress(device.deviceAddress)
+                                        viewModel.setTargetNodeId(targetNodeId)
+                                        viewModel.setCurrentPeerAddress(targetAddress)
 
                                         bluetoothService?.connect(device.deviceAddress)
-                                        activeChatAddress = device.deviceAddress
-                                        localChatAddress = device.deviceAddress
+                                        activeChatAddress = targetAddress
+                                        localChatAddress = targetAddress
                                         activeChatName = targetName
                                         currentRoute = Screen.Chats.route
                                     },
                                     onMeshPeerClick = { peer ->
+                                        val targetAddress = peer.nodeId.toString()
                                         viewModel.setConnectedDeviceName(peer.name)
                                         viewModel.setTargetNodeId(peer.nodeId)
-                                        viewModel.setCurrentPeerAddress(peer.nodeId.toString())
+                                        viewModel.setCurrentPeerAddress(targetAddress)
 
-                                        activeChatAddress = peer.nodeId.toString()
-                                        localChatAddress = peer.nodeId.toString()
+                                        activeChatAddress = targetAddress
+                                        localChatAddress = targetAddress
                                         activeChatName = peer.name
                                         currentRoute = Screen.Chats.route
                                     }
