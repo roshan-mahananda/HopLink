@@ -179,6 +179,9 @@ class MainActivity : ComponentActivity() {
                 val discoveredDevices by viewModel.discoveredDevices.collectAsState()
                 val meshPeers by viewModel.meshPeers.collectAsState()
 
+                val directNames = discoveredDevices.mapNotNull { it.deviceName }.toSet()
+                val outOfRangePeers = meshPeers.filter { peer -> peer.name !in directNames }
+
                 var localChatAddress by remember { mutableStateOf<String?>(null) }
                 var activeChatName by remember { mutableStateOf("") }
 
@@ -257,7 +260,7 @@ class MainActivity : ComponentActivity() {
                                     userName = savedUsername,
                                     onEditClick = { showProfileDialog = true },
                                     directDevicesCount = discoveredDevices.size,
-                                    extendedPeersCount = extendedPeersCount,
+                                    extendedPeersCount = outOfRangePeers.size,
                                     maxMeshReach = 10,
                                     isBluetoothOn = isHopLinkOn,
                                     onToggleBluetooth = { isOn ->
@@ -273,7 +276,7 @@ class MainActivity : ComponentActivity() {
                                         } else {
                                             bluetoothScanner.stopScanning(adapter)
                                             bluetoothAdvertiser.stopAdvertising(adapter)
-                                            viewModel.clearDiscoveredDevices()
+                                            viewModel.clearMeshPeers()
                                         }
                                     },
                                     onDiscoverClick = {
@@ -292,7 +295,7 @@ class MainActivity : ComponentActivity() {
 
                                 DiscoverScreen(
                                     devices = discoveredDevices,
-                                    meshPeers = meshPeers,
+                                    meshPeers = outOfRangePeers,
                                     onDeviceClick = { device ->
                                         val targetName = device.userAlias ?: device.deviceName
 

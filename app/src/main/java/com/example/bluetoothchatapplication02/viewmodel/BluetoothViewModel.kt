@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -117,6 +118,21 @@ class BluetoothViewModel(
                 }
             }
         }
+    }
+
+    val outOfRangePeers: StateFlow<List<MeshPeer>> = combine(
+        _meshPeers,
+        _discoverableDevices
+    ) { mesh, direct ->
+        mesh.filter { peer -> direct.none { it.deviceName == peer.name } }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    fun clearMeshPeers() {
+        _meshPeers.value = emptyList()
     }
 
     private fun saveMessageToDatabase(text: String, senderName: String, isFromMe: Boolean, deviceAddress: String) {
