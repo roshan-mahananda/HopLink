@@ -137,12 +137,21 @@ class BluetoothLeService : Service() {
     }
 
     fun sendMessage(message: String, destinationId: Int = 0) {
-        val stringBytes = message.toByteArray(Charsets.UTF_8)
+        val headerSize = 15
+        val maxStringSize = 24 - headerSize
+
+        var stringBytes = message.toByteArray(Charsets.UTF_8)
+
+        if (stringBytes.size > maxStringSize) {
+            stringBytes = stringBytes.take(maxStringSize).toByteArray()
+            Log.w(TAG, "Message truncated to fit BLE legacy advertising packet")
+        }
+
         val ttl: Byte = 10
         val messageId = UUID.randomUUID().hashCode()
         val payloadLength = stringBytes.size.toShort()
 
-        val buffer = ByteBuffer.allocate(15 + stringBytes.size)
+        val buffer = ByteBuffer.allocate(headerSize + stringBytes.size)
         buffer.put(ttl)
         buffer.putInt(messageId)
         buffer.putInt(myNodeId)

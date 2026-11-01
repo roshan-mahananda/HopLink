@@ -77,7 +77,7 @@ class BluetoothAdvertiser {
     fun broadcastMeshMessage(bluetoothAdapter: BluetoothAdapter?, payload: ByteArray, onComplete: () -> Unit) {
         val advertiser = bluetoothAdapter?.bluetoothLeAdvertiser ?: return
 
-        val safePayload = if (payload.size > 31) payload.copyOf(31) else payload
+        val safePayload = if (payload.size > 24) payload.copyOf(24) else payload
 
         val settings = AdvertiseSettings.Builder()
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
@@ -86,7 +86,6 @@ class BluetoothAdvertiser {
             .build()
 
         val data = AdvertiseData.Builder()
-            .addServiceUuid(HopLinkConfig.SERVICE_UUID)
             .addServiceData(HopLinkConfig.SERVICE_UUID, safePayload)
             .setIncludeDeviceName(false)
             .build()
