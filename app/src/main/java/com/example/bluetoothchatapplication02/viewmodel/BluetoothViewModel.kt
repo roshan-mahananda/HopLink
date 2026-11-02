@@ -124,7 +124,16 @@ class BluetoothViewModel(
         _meshPeers,
         _discoverableDevices
     ) { mesh, direct ->
-        mesh.filter { peer -> direct.none { it.deviceName == peer.name } }
+        mesh.filter { peer ->
+            direct.none { device ->
+                val deviceName = device.userAlias ?: device.deviceName ?: ""
+                val nameMatches = deviceName.isNotBlank() && peer.name.isNotBlank() &&
+                        (deviceName.equals(peer.name, ignoreCase = true) || deviceName.startsWith(peer.name, ignoreCase = true))
+                val addressMatches = device.deviceAddress.equals(peer.nodeId.toString(), ignoreCase = true)
+
+                nameMatches || addressMatches
+            }
+        }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -149,7 +158,7 @@ class BluetoothViewModel(
     }
 
     fun receiveChatMessage(message: String, senderId: Int, senderAddress: String) {
-        val targetAddress = if (senderId != -1) senderId.toString() else senderAddress
+        val targetAddress = if (senderId != -1 && senderId != 0) senderId.toString() else senderAddress
         val peerName = _meshPeers.value.find { it.nodeId == senderId }?.name ?: _connectedDeviceName.value
 
         saveMessageToDatabase(

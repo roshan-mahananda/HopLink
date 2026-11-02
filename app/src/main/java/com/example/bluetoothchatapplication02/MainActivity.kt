@@ -108,10 +108,9 @@ class MainActivity : ComponentActivity() {
 
                 BluetoothLeService.ACTION_PEER_ANNOUNCED -> {
                     val senderId = intent.getIntExtra(BluetoothLeService.EXTRA_SENDER_ID, -1)
-                    val peerName = intent.getStringExtra(BluetoothLeService.EXTRA_NAME) ?: "Unknown"
+                    val peerName = intent.getStringExtra(BluetoothLeService.EXTRA_NAME) ?: "Peer $senderId"
 
                     if (senderId != -1) {
-                        Log.d("MainActivity", "Discovered out-of-range mesh peer: $peerName ($senderId)")
                         viewModel.addMeshPeer(senderId, peerName)
                     }
                 }
@@ -297,9 +296,13 @@ class MainActivity : ComponentActivity() {
                                     devices = discoveredDevices,
                                     meshPeers = outOfRangePeers,
                                     onDeviceClick = { device ->
-                                        val targetName = device.userAlias ?: device.deviceName
+                                        val targetName = device.userAlias ?: device.deviceName ?: "Unknown"
 
-                                        val knownPeer = meshPeers.find { it.name == targetName || it.nodeId.toString() == device.deviceAddress }
+                                        val knownPeer = meshPeers.find {
+                                            it.name.equals(targetName, ignoreCase = true) ||
+                                                    it.nodeId.toString() == device.deviceAddress
+                                        }
+
                                         val targetAddress = knownPeer?.nodeId?.toString() ?: device.deviceAddress
                                         val targetNodeId = knownPeer?.nodeId ?: device.deviceAddress.toIntOrNull()
 

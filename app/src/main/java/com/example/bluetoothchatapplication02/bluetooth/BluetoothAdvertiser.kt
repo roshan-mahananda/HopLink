@@ -15,11 +15,17 @@ class BluetoothAdvertiser {
     private var messageCallback: AdvertiseCallback? = null
     private val handler = Handler(Looper.getMainLooper())
 
+    private var lastUsername: String? = null
+    private var lastNodeId: Int? = null
+
     var isAdvertising = false
         private set
 
     @SuppressLint("MissingPermission")
     fun startAdvertising(bluetoothAdapter: BluetoothAdapter?, username: String, nodeId: Int) {
+        this.lastUsername = username
+        this.lastNodeId = nodeId
+
         val advertiser = bluetoothAdapter?.bluetoothLeAdvertiser
         if (advertiser == null || isAdvertising) return
 
@@ -77,6 +83,7 @@ class BluetoothAdvertiser {
     fun broadcastMeshMessage(bluetoothAdapter: BluetoothAdapter?, payload: ByteArray, onComplete: () -> Unit) {
         val advertiser = bluetoothAdapter?.bluetoothLeAdvertiser ?: return
 
+        // 31-byte legacy limit minus overhead. Scan response provides extra room.
         val safePayload = if (payload.size > 24) payload.copyOf(24) else payload
 
         val settings = AdvertiseSettings.Builder()
@@ -85,7 +92,13 @@ class BluetoothAdvertiser {
             .setConnectable(false)
             .build()
 
+        // Split data to avoid Error Code 2 (DATA_TOO_LARGE)
         val data = AdvertiseData.Builder()
+            .addServiceUuid(HopLinkConfig.SERVICE_UUID)
+            .setIncludeDeviceName(false)
+            .build()
+
+        val scanResponse = AdvertiseData.Builder()
             .addServiceData(HopLinkConfig.SERVICE_UUID, safePayload)
             .setIncludeDeviceName(false)
             .build()
@@ -100,7 +113,7 @@ class BluetoothAdvertiser {
         }
 
         stopAdvertising(bluetoothAdapter)
-        advertiser.startAdvertising(settings, data, null, messageCallback)
+        advertiser.startAdvertising(settings, data, scanResponse, messageCallback)
 
         handler.postDelayed({
             @SuppressLint("MissingPermission")
@@ -109,6 +122,12 @@ class BluetoothAdvertiser {
                 messageCallback = null
                 Log.d("BluetoothAdvertiser", "Stopped mesh payload broadcast")
             }
+
+            // Resume presence advertising
+            if (lastUsername != null && lastNodeId != null) {
+                startAdvertising(bluetoothAdapter, lastUsername!!, lastNodeId!!)
+            }
+
             onComplete()
         }, 3000)
     }

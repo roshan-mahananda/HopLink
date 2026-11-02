@@ -15,6 +15,7 @@ class BluetoothScanner(
     private val onDeviceFound: (deviceAddress: String, deviceName: String, nodeId: Int) -> Unit,
     private val onMeshPayloadReceived: (ByteArray) -> Unit
 ) {
+    private val discoveredNodeCache = mutableSetOf<Int>()
     private var isScanning = false
     private var scanCallback: ScanCallback? = null
     private var bluetoothAdapter: BluetoothAdapter? = null
@@ -44,22 +45,22 @@ class BluetoothScanner(
             @SuppressLint("MissingPermission")
             override fun onScanResult(callbackType: Int, result: ScanResult) {
                 val scanRecord = result.scanRecord ?: return
-                val serviceData = scanRecord.getServiceData(HopLinkConfig.SERVICE_UUID)
+                val serviceData = scanRecord.getServiceData(HopLinkConfig.SERVICE_UUID) ?: return
 
-                if (serviceData != null) {
-                    if (serviceData.size >= 15) {
-                        Log.d("BluetoothScanner", "Caught ambient mesh payload from ${result.device.address}")
-                        onMeshPayloadReceived(serviceData)
-                    } else if (serviceData.size >= 4) {
-                        val buffer = ByteBuffer.wrap(serviceData)
-                        val nodeId = buffer.int
-                        val nameBytes = ByteArray(serviceData.size - 4)
-                        buffer.get(nameBytes)
-                        val deviceName = String(nameBytes, Charsets.UTF_8)
+                val isMeshPayload = serviceData.size >= 8 && (serviceData[7].toInt() and 0xFF) == (serviceData.size - 8)
 
-                        Log.d("BluetoothScanner", "Discovered: $deviceName (Node: $nodeId)")
-                        onDeviceFound(result.device.address, deviceName, nodeId)
-                    }
+                if (isMeshPayload) {
+                    Log.d("BluetoothScanner", "Caught ambient mesh payload from ${result.device.address}")
+                    onMeshPayloadReceived(serviceData)
+                } else if (serviceData.size >= 4) {
+                    val buffer = ByteBuffer.wrap(serviceData)
+                    val nodeId = buffer.int
+                    val nameBytes = ByteArray(serviceData.size - 4)
+                    buffer.get(nameBytes)
+                    val deviceName = String(nameBytes, Charsets.UTF_8)
+
+                    Log.d("BluetoothScanner", "Discovered: $deviceName (Node: $nodeId)")
+                    onDeviceFound(result.device.address, deviceName, nodeId)
                 }
             }
 

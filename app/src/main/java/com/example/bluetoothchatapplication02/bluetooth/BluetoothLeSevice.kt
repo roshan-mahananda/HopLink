@@ -137,38 +137,31 @@ class BluetoothLeService : Service() {
     }
 
     fun sendMessage(message: String, destinationId: Int = 0) {
-        val headerSize = 15
-        val maxStringSize = 24 - headerSize
+        val headerSize = 8
+        val maxStringSize = 24 - headerSize // 16 bytes max for payload text
 
         var stringBytes = message.toByteArray(Charsets.UTF_8)
-
         if (stringBytes.size > maxStringSize) {
             stringBytes = stringBytes.take(maxStringSize).toByteArray()
-            Log.w(TAG, "Message truncated to fit BLE legacy advertising packet")
         }
 
         val ttl: Byte = 10
-        val messageId = UUID.randomUUID().hashCode()
-        val payloadLength = stringBytes.size.toShort()
+        val messageId = UUID.randomUUID().hashCode().toShort()
+        val payloadLength = stringBytes.size.toByte()
 
         val buffer = ByteBuffer.allocate(headerSize + stringBytes.size)
         buffer.put(ttl)
-        buffer.putInt(messageId)
-        buffer.putInt(myNodeId)
-        buffer.putInt(destinationId)
-        buffer.putShort(payloadLength)
+        buffer.putShort(messageId)
+        buffer.putShort(myNodeId.toShort())
+        buffer.putShort(destinationId.toShort())
+        buffer.put(payloadLength)
         buffer.put(stringBytes)
 
         val payload = buffer.array()
-        seenMessageIds.add(messageId)
-
-        Log.d(TAG, "Sending Msg ID $messageId | From: $myNodeId -> To: $destinationId | TTL: $ttl")
-
+        seenMessageIds.add(messageId.toInt() and 0xFFFF)
         dispatchBytes(payload)
 
-        meshAdvertiser.broadcastMeshMessage(bluetoothAdapter, payload) {
-            Log.d(TAG, "Finished ambient broadcast for local message $messageId")
-        }
+        meshAdvertiser.broadcastMeshMessage(bluetoothAdapter, payload) {}
     }
 
     fun sendMeshMessage(targetNodeId: Int, message: String) {
@@ -186,89 +179,55 @@ class BluetoothLeService : Service() {
     }
 
     private fun processIncomingData(value: ByteArray, address: String) {
-        if (value.size < 15) {
-            Log.e(TAG, "Received packet too small to contain 15-byte mesh header.")
-            return
-        }
+        if (value.size < 8) return
 
         val buffer = ByteBuffer.wrap(value)
         val ttl = buffer.get()
-        val messageId = buffer.getInt()
-        val senderId = buffer.getInt()
-        val destinationId = buffer.getInt()
-        val payloadLength = buffer.getShort()
+        val messageId = buffer.getShort().toInt() and 0xFFFF
+        val senderId = buffer.getShort().toInt() and 0xFFFF
+        val destinationId = buffer.getShort().toInt() and 0xFFFF
+        val payloadLength = buffer.get()
 
-        if (seenMessageIds.contains(messageId)) {
-            Log.d(TAG, "Dropped duplicate message ID: $messageId")
-            return
-        }
-
+        if (seenMessageIds.contains(messageId)) return
         seenMessageIds.add(messageId)
-        if (seenMessageIds.size > MAX_CACHE_SIZE) {
-            val oldestId = seenMessageIds.first()
-            seenMessageIds.remove(oldestId)
-        }
 
-        if (senderId == myNodeId) {
-            Log.d(TAG, "Dropped loopback message originating from this device ($myNodeId)")
-            return
-        }
+        val checkId = myNodeId and 0xFFFF
+        if (senderId == checkId) return
 
-        val safePayloadLen = minOf(payloadLength.toInt() and 0xFFFF, value.size - 15)
+        val safePayloadLen = minOf(payloadLength.toInt() and 0xFF, value.size - 8)
         if (safePayloadLen <= 0) return
 
         val textBytes = ByteArray(safePayloadLen)
         buffer.get(textBytes)
         val receivedText = String(textBytes, Charsets.UTF_8)
 
-        Log.d(TAG, "Processed ID: $messageId | From: $senderId | To: $destinationId | TTL: $ttl")
-
-        val isForMe = destinationId == 0 || destinationId == myNodeId
+        val isForMe = destinationId == 0 || destinationId == checkId
         if (isForMe) {
-            if (receivedText.startsWith("[SYS_ANNOUNCE]:")) {
-                val peerName = receivedText.removePrefix("[SYS_ANNOUNCE]:")
-                sendBroadcast(Intent(ACTION_PEER_ANNOUNCED).apply {
-                    setPackage(packageName)
-                    putExtra(EXTRA_SENDER_ID, senderId)
-                    putExtra(EXTRA_NAME, peerName)
-                })
-            } else if (receivedText.startsWith("[SYS_NAME]:")) {
-                val peerName = receivedText.removePrefix("[SYS_NAME]:")
-                sendBroadcast(Intent(ACTION_NAME_AVAILABLE).apply {
-                    setPackage(packageName)
-                    putExtra(EXTRA_ADDRESS, address)
-                    putExtra(EXTRA_NAME, peerName)
-                })
-            } else {
-                sendBroadcast(Intent(ACTION_DATA_AVAILABLE).apply {
-                    setPackage(packageName)
-                    putExtra(EXTRA_SENDER_ID, senderId)
-                    putExtra(EXTRA_ADDRESS, address)
-                    putExtra(EXTRA_DATA, receivedText)
-                })
-            }
-        } else {
-            Log.d(TAG, "Relaying private message intended for Node $destinationId (My Node ID: $myNodeId)")
-        }
-
-        if (ttl > 1) {
-            val newTtl = (ttl - 1).toByte()
-            Log.d(TAG, "Forwarding packet $messageId to peers. New TTL: $newTtl")
-
-            val forwardBuffer = ByteBuffer.allocate(15 + textBytes.size)
-            forwardBuffer.put(newTtl)
-            forwardBuffer.putInt(messageId)
-            forwardBuffer.putInt(senderId)
-            forwardBuffer.putInt(destinationId)
-            forwardBuffer.putShort(payloadLength)
-            forwardBuffer.put(textBytes)
-
-            val payload = forwardBuffer.array()
-
-            dispatchBytes(payload)
-
-            meshAdvertiser.broadcastMeshMessage(bluetoothAdapter, payload) {
-                Log.d(TAG, "Finished ambient broadcast for relayed packet $messageId")
+            when {
+                receivedText.startsWith("@A:") -> {
+                    val peerName = receivedText.removePrefix("@A:")
+                    sendBroadcast(Intent(ACTION_PEER_ANNOUNCED).apply {
+                        setPackage(packageName)
+                        putExtra(EXTRA_SENDER_ID, senderId)
+                        putExtra(EXTRA_NAME, peerName)
+                    })
+                }
+                receivedText.startsWith("@N:") -> {
+                    val peerName = receivedText.removePrefix("@N:")
+                    sendBroadcast(Intent(ACTION_NAME_AVAILABLE).apply {
+                        setPackage(packageName)
+                        putExtra(EXTRA_ADDRESS, address)
+                        putExtra(EXTRA_NAME, peerName)
+                    })
+                }
+                else -> {
+                    sendBroadcast(Intent(ACTION_DATA_AVAILABLE).apply {
+                        setPackage(packageName)
+                        putExtra(EXTRA_SENDER_ID, senderId)
+                        putExtra(EXTRA_ADDRESS, address)
+                        putExtra(EXTRA_DATA, receivedText)
+                    })
+                }
             }
         }
     }
